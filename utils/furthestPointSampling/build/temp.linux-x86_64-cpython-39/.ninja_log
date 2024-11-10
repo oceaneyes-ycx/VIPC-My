@@ -1,0 +1,3 @@
+# ninja log v5
+0	26196	1729676554819755675	/home/ycx/code/EGIInet-analy/utils/furthestPointSampling/build/temp.linux-x86_64-cpython-39/sampling.o	e76144e77bcd011a
+1	26969	1729676555609769494	/home/ycx/code/EGIInet-analy/utils/furthestPointSampling/build/temp.linux-x86_64-cpython-39/sampling_gpu.o	caa1f3309299822c

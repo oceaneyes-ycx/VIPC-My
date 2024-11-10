@@ -1,0 +1,3 @@
+# ninja log v5
+1	18020	1729676463958165928	/home/ycx/code/EGIInet-analy/metrics/CD/chamfer3D/build/temp.linux-x86_64-cpython-39/home/ycx/code/EGIInet-analy/metrics/CD/chamfer3D/chamfer_cuda.o	7837464600130c7
+0	18387	1729676464328172408	/home/ycx/code/EGIInet-analy/metrics/CD/chamfer3D/build/temp.linux-x86_64-cpython-39/home/ycx/code/EGIInet-analy/metrics/CD/chamfer3D/chamfer3D.o	c5bdc6fd3ecf8f19

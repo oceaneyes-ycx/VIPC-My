@@ -1,0 +1,10 @@
+# ninja log v5
+1	17414	1729676290105124123	/home/ycx/code/EGIInet-analy/models/pointnet2_batch/build/temp.linux-x86_64-cpython-39/src/interpolate.o	e0f2d503d91c3366
+0	17665	1729676290355128497	/home/ycx/code/EGIInet-analy/models/pointnet2_batch/build/temp.linux-x86_64-cpython-39/src/group_points.o	75f5cdca1afecb48
+0	17978	1729676290665133919	/home/ycx/code/EGIInet-analy/models/pointnet2_batch/build/temp.linux-x86_64-cpython-39/src/ball_query.o	65b28f6f7fc6388
+2	18066	1729676290755135492	/home/ycx/code/EGIInet-analy/models/pointnet2_batch/build/temp.linux-x86_64-cpython-39/src/sampling.o	b7a7ae0c2e9cfab5
+0	33229	1729676305925400372	/home/ycx/code/EGIInet-analy/models/pointnet2_batch/build/temp.linux-x86_64-cpython-39/src/group_points_gpu.o	5b4587f276af9a48
+1	33323	1729676306015401944	/home/ycx/code/EGIInet-analy/models/pointnet2_batch/build/temp.linux-x86_64-cpython-39/src/interpolate_gpu.o	ce2dc18644ffa72
+0	33564	1729676306255406147	/home/ycx/code/EGIInet-analy/models/pointnet2_batch/build/temp.linux-x86_64-cpython-39/src/ball_query_gpu.o	31f33a096757baa6
+2	33844	1729676306535411050	/home/ycx/code/EGIInet-analy/models/pointnet2_batch/build/temp.linux-x86_64-cpython-39/src/sampling_gpu.o	cad6b38e2da25e11
+1	34433	1729676307115421204	/home/ycx/code/EGIInet-analy/models/pointnet2_batch/build/temp.linux-x86_64-cpython-39/src/pointnet2_api.o	cce2debfdffb4428
