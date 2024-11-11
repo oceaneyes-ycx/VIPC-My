@@ -10,18 +10,16 @@ from models.encoders import img_tokenizer,img_tokenizer2,pc_tokenizer,pc_tokeniz
 from config_vipc import cfg
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from utils.average_meter import AverageMeter,AverageMeter2
+from utils.average_meter import AverageMeter, AverageMeter2
 from datasets.data import ShapeNetRender, ModelNet40SVM, ScanObjectNNSVM
 
 import torchvision.transforms as transforms
 
 from PIL import ImageFile
 
-
-
 def train(cfg):
     # 初始化WandB
-    wandb.init(project='Pretrain', config=cfg)  # 传入config参数，便于记录实验配置
+    wandb.init(project='Pretrain', config=cfg)
     torch.backends.cudnn.benchmark = True
 
     # 加载数据集
@@ -45,8 +43,13 @@ def train(cfg):
     # 模型和优化器初始化
     img_model = img_tokenizer2().cuda()
     point_model = pc_tokenizer2().cuda()
-    wandb.watch(img_model, log="all")  # 监视img模型的参数和梯度
-    wandb.watch(point_model, log="all")  # 监视point模型的参数和梯度
+    
+    # 使用DataParallel封装模型
+    #img_model = nn.DataParallel(img_model)
+    #point_model = nn.DataParallel(point_model)
+    
+    wandb.watch(img_model, log="all")
+    wandb.watch(point_model, log="all")
 
     params = list(img_model.parameters()) + list(point_model.parameters())
     opt = optim.Adam(params, lr=cfg.TRAIN.LEARNING_RATE, weight_decay=cfg.TRAIN.WEIGHT_DECAY)
