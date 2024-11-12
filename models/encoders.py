@@ -548,18 +548,18 @@ if __name__ == '__main__':
     import time
     pc = torch.rand([4, 2048, 3]).cuda()#4个点云，每个点云有2048个点，每个点有3个特征,4*2048*3
     img = torch.rand([4, 3, 224, 224]).cuda()#4个图像，每个图像有3个通道，224*224,4*3*224*224
-    pointmodel=pc_tokenizer().cuda()
-    _,pc_f=pointmodel(pc,pc.transpose(1,2).contiguous())
-    print(pc_f)
-    #model = transfer_loss_shared_encoder().cuda()
+    #pointmodel=pc_tokenizer().cuda()
+    #_,pc_f=pointmodel(pc,pc.transpose(1,2).contiguous())
+    #print(pc_f)
+    model = transfer_loss_shared_encoder().cuda()
     #s = time.time()
-    #x1,x2, p,s_l= model(pc,img)
+    x1,x2, p,s_l= model(pc,img)
     #x1是点云数据，x2是图像数据，p是点云数据的中心点，s_l是风格迁移损失
     #e = time.time()
     #print(e-s)#打印时间
-    #print(x1.shape)#打印点云特征的形状
-    #print(x2.shape)#打印图像特征的形状
-    #print(s_l)#打印风格迁移损失
+    print(x1.shape)#打印点云特征的形状
+    print(x2.shape)#打印图像特征的形状
+    print(s_l)#打印风格迁移损失
     #model_parameters = filter(lambda p: p.requires_grad, model.parameters())#过滤出需要梯度的参数
     #parameters = sum([np.prod(p.size()) for p in model_parameters])#计算参数数量
     #print(f"n parameters:{parameters}")#打印参数数量
