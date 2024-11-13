@@ -24,6 +24,7 @@ This work is accepted by ECCV 2024. In comparison with previous methods that rel
 - ninja == 1.11.1
 - torch-scatter
 - einops
+- numpy=1.26.4
 
 Install PointNet++ utils, Density-aware Chamfer Distance and Furthest Point Sampling.
 ```
