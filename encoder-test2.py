@@ -142,7 +142,7 @@ class img_tokenizer2(nn.Module):
         x = self.global_pool(x)  # [B, C, N] -> [B, C, 1]
         x = x.squeeze(-1)  # 移除最后一维，得到 [B, C]
 
-        return x, H, W
+        return x
 
 
 class pc_tokenizer(nn.Module):
@@ -640,7 +640,11 @@ class transfer_loss_shared_encoder2(nn.Module):
             #点云数据特征提取，返回点云特征和中心点
             _, _, pc_f= self.pretrained_pc_encoder(pc, pc.transpose(1, 2).contiguous())
             #torch.Size([16, 384])
-            im_f, _, _ = self.pretrained_img_encoder(im)
+        #将
+
+        
+        with torch.no_grad():    
+            im_f  = self.pretrained_img_encoder(im)
             #torch.Size([16, 768])
 
         # 存储每个深度层的点云数据和图像数据
