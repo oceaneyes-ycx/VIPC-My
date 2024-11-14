@@ -1,6 +1,6 @@
 setup.py
-/home/ycx/code/EGIInet-analy/metrics/CD/chamfer3D/chamfer3D.cu
-/home/ycx/code/EGIInet-analy/metrics/CD/chamfer3D/chamfer_cuda.cpp
+/home/ycx/code/VIPC-My/metrics/CD/chamfer3D/chamfer3D.cu
+/home/ycx/code/VIPC-My/metrics/CD/chamfer3D/chamfer_cuda.cpp
 chamfer_3D.egg-info/PKG-INFO
 chamfer_3D.egg-info/SOURCES.txt
 chamfer_3D.egg-info/dependency_links.txt

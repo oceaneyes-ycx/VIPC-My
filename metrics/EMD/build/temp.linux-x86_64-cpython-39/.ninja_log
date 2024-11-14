@@ -1,3 +1,5 @@
 # ninja log v5
 0	17925	1729676510698983733	/home/ycx/code/EGIInet-analy/metrics/EMD/build/temp.linux-x86_64-cpython-39/emd.o	11902ddad134d2bf
 0	18291	1729676511068990205	/home/ycx/code/EGIInet-analy/metrics/EMD/build/temp.linux-x86_64-cpython-39/emd_cuda.o	1bca0643d3916438
+5	18758	1731495240252606424	/home/ycx/code/VIPC-My/metrics/EMD/build/temp.linux-x86_64-cpython-39/emd.o	b1f6ad534005d36a
+5	19153	1731495240642606369	/home/ycx/code/VIPC-My/metrics/EMD/build/temp.linux-x86_64-cpython-39/emd_cuda.o	26c881be247b8f8f

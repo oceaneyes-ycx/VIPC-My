@@ -57,9 +57,22 @@ def train(cfg):
 
     # 损失函数
     criterion = NTXentLoss(temperature=0.1).cuda()
+    # 加载模型检查点
+    start_epoch = 0
     best_loss = float('inf')
+    checkpoint_path = 'best_model.pth'
+    
+    if os.path.exists(checkpoint_path):
+        print(f"Loading checkpoint from {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path)
+        img_model.load_state_dict(checkpoint['img_model_state_dict'])
+        point_model.load_state_dict(checkpoint['point_model_state_dict'])
+        opt.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        best_loss = checkpoint['loss']
+        print(f"Resuming from epoch {start_epoch} with best loss {best_loss:.4f}")
 
-    for epoch in range(0, cfg.TRAIN.N_EPOCHS):
+    for epoch in range(start_epoch, cfg.TRAIN.N_EPOCHS):
         train_loss = AverageMeter2()
         train_intra_loss = AverageMeter2()
         train_cross_loss = AverageMeter2()

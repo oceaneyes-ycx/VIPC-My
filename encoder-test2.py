@@ -142,7 +142,7 @@ class img_tokenizer2(nn.Module):
         x = self.global_pool(x)  # [B, C, N] -> [B, C, 1]
         x = x.squeeze(-1)  # 移除最后一维，得到 [B, C]
 
-        return x
+        return x, H, W
 
 
 class pc_tokenizer(nn.Module):
@@ -451,11 +451,9 @@ class transfer_loss_shared_encoder(nn.Module):
         super().__init__()
         from timm.models.vision_transformer import Block#transformer搭载模块
         self.im_to_token=img_tokenizer(patch_size=img_patch_size,embed_dim=embed_dim)
-        #192
         self.pc_to_token=pc_tokenizer(sample_ratio=sample_ratio,scale=scale,embed_dim=pc_h_hidden_dim)
-        #384
-        self.embed_dim=embed_dim#赋值=192
-        self.fuse_layer_num=fuse_layer_num#赋值=1
+        self.embed_dim=embed_dim#赋值
+        self.fuse_layer_num=fuse_layer_num
         
         self.blocks = nn.Sequential(*[
             Block(
@@ -501,19 +499,36 @@ class transfer_loss_shared_encoder(nn.Module):
 
     def forward(self,pc,im):
         #前向传播函数，接收参数：pc，点云数据（张量）；im，图像数据（张量）
-        #pc:[B,N,3]4*2048*3,im:[B,C,H,W]4*3*224*224
-        B=pc.size(0)
+        B=pc.size(0)#16
+        #点云编码器输出
         p_list,x_list=self.pc_to_token(pc,pc.transpose(1,2).contiguous())
-        #点云数据token化，返回点云数据和特征
+        #p_list:4个tensor 0:16*2048*3 1:16*1024*3 2:16*512*3 3:16*256*3 代表点云中心点坐标
+        #x_list:4个tensor 0:16*3*2048 1:16*96*1024 2:16*192*512 3:16*384*256 代表点云特征(3维坐标)
 
         cent_p,pc_f=p_list[-1],self.proj(x_list[-1].transpose(1, 2))
-        #计算点云数据的中心点和特征，将特征映射到与图像数据相同的嵌入维度
-        #返回点云数据的中心点和特征
-        im_f,_,_=self.im_to_token(im)
-        #图像数据token化
+        #选取-1，即为最后的输出结果作为中心点和点云特征
+        #使用线性层将点云特征映射到与图像数据相同的嵌入维度
+        #self.proj = nn.Linear(self.pc_to_token.out_channels, self.embed_dim)
+        #channel_list=[3, 96, 192, 384],out_channels=384,self.embed_dim=192
+        #cent_p:16*256*3  pc_f:16*256*192
 
-        pc_pos_emd = self.pc_pos_embed(cent_p)
+
+
+        #图像数据token化
+        im_f,_,_=self.im_to_token(im)
+        #im:16*3*224*224
+        #im_f:16*256*192
+
+        #由此我们可以看到，我们成功将点云数据和图像数据转换为了嵌入空间中的特征
+        #目前这两个维度都是16*256*192了
+        
         #计算点云数据的位置嵌入
+        pc_pos_emd = self.pc_pos_embed(cent_p)
+        #        self.pc_pos_embed = nn.Sequential(
+        #    create_linearblock(3, 128, norm_args=None, act_args=act_args),
+        #    nn.Linear(128, self.embed_dim))
+        #对点云的位置信息进行编码，得到点云的位置嵌入
+        #torch.Size([16, 256, 192])
 
 
         #存储每个深度层的点云数据和图像数据
@@ -526,10 +541,16 @@ class transfer_loss_shared_encoder(nn.Module):
             im_f = self.blocks[i](im_f)
             pc_f_list.append(pc_f)
             im_f_list.append(im_f)
+        #pc_f_list:3个tensor 0:16*256*192 1:16*256*192 2:16*256*192 表示点云数据的特征
+        #im_f_list:3个tensor 0:16*256*192 1:16*256*192 2:16*256*192 表示图像数据的特征
         pc_f=self.pc_norm(pc_f)#点云数据归一化
+        # torch.Size([16, 256, 192])
         im_f=self.im_norm(im_f)#图像数据归一化
+        # torch.Size([16, 256, 192])
         x, _ = self.cross_layer(pc_f, im_f, pc_f)#跨模态注意力机制
+        # x: torch.Size([16, 256, 192]) 代表跨模态注意力机制的输出
         pc_f=self.cross_norm(pc_f+x)#跨模态注意力机制归一化
+        # pc_f: torch.Size([16, 256, 192]) 代表跨模态注意力机制归一化的输出
 
         if self.fuse_layer_num==0:  #不进行风格迁移
             im_target_gram = gram_matrix(im_f_list[-1])
@@ -546,7 +567,6 @@ class transfer_loss_shared_encoder(nn.Module):
             pc_content_loss=torch.mean((pc_f_list[-1]-pc_f_list[-(self.fuse_layer_num+1)])**2)#str，计算点云数据的内容损失
             style_transfer_loss=pc_content_loss+style_loss#计算风格迁移损失
         return pc_f,im_f,cent_p,style_transfer_loss#返回点云特征，图像特征，中心点，风格迁移损失
-
 
 class transfer_loss_shared_encoder2(nn.Module):
     def __init__(self,
@@ -619,7 +639,7 @@ class transfer_loss_shared_encoder2(nn.Module):
 
         #线性层，输入通道数为pc_to_token的输出通道数，输出通道数为embed_dim
         #用于将点云数据的特征映射到与图像数据相同的嵌入维度
-        self.proj = nn.Linear(self.pc_to_token.out_channels, self.embed_dim)
+        self.proj = nn.Linear(self.pretrained_pc_encoder.out_channels, self.embed_dim)
 
         #点云位置嵌入层，用于将点云数据的位置信息嵌入到嵌入空间中
         #对点云数据的位置信息进行编码
@@ -634,26 +654,50 @@ class transfer_loss_shared_encoder2(nn.Module):
         # 前向传播函数，接收参数：pc（点云数据，tensor），im（图像数据）
         
         B=pc.size(0)#获取batch_size
+        #16
+
+        #pc:torch.Size([16, 3500, 3])
+        #im:torch.Size([16, 3, 224, 224])
 
         # 使用预训练的编码器提取特征
         with torch.no_grad():
             #点云数据特征提取，返回点云特征和中心点
-            _, _, pc_f= self.pretrained_pc_encoder(pc, pc.transpose(1, 2).contiguous())
-            #torch.Size([16, 384])
-        #将
+            p_list, _, x_list= self.pretrained_pc_encoder(pc, pc.transpose(1, 2).contiguous())
+            #p_list:3个tensor, 0:16*3500*3  1:16*875*3  2:16*218*3 代表经过编码器之后的点云中心点
+            #一开始是3500个点，一次下采样变为875个点，再次下采样变为218个点
+            #x_list:torch.Size([16, 384])  代表经过编码器之后被提取到的特征
+            #因为加了池化层，x_list不再是一个list列表了，而是单纯一个tensor
+
+        #将点云特征投影到和图像数据相同的嵌入维度
+        #cent_p, pc_f = p_list[-1], self.proj(x_list[-1].transpose(1, 2))
+        cent_p, pc_f = p_list[-1], self.proj(x_list.transpose(0, 1))
+        #一个线性层用于投影特征
+        #p_list[-1]：从 p_list 列表中获取最后一个元素，也就是最终输出的中心点
+        #因此cent_p是最终输出的中心点
+        #x_list[-1]：从 x_list 列表中获取最后一个元素，也就是最终输出的特征
+        #x_list[-1].transpose(1, 2)：对 x_list 的最后一个元素进行转置操作。
+        # transpose(1, 2) 表示将第1维和第2维进行交换。
+        #因为我们修改了点云编码器，出来的维度只有两维，所以这里修改了代码
+        #原有维度是[16, 384]，转置后变为[384, 16]，设定的embed_dim是384
+        #self.proj = nn.Linear(384, 384)，所以这里的输出维度是[16, 384]
+
+        #返回点云数据的中心点和特征
+        im_f, _, _ = self.pretrained_img_encoder(im)
 
         
         with torch.no_grad():    
-            im_f  = self.pretrained_img_encoder(im)
+            im_f, _ , _   = self.pretrained_img_encoder(im)
             #torch.Size([16, 768])
+        #计算点云数据的位置嵌入
+        pc_pos_emd = self.pc_pos_embed(cent_p)
 
         # 存储每个深度层的点云数据和图像数据
         pc_f_list = []
         im_f_list = []
 
         # Transformer blocks 处理
-        for i in range(len(self.blocks)):
-            pc_f = self.blocks[i](pc_f)
+        for i in range(self.depth):
+            pc_f = self.blocks[i](pc_f+pc_pos_emd)
             im_f = self.blocks[i](im_f)
             pc_f_list.append(pc_f)
             im_f_list.append(im_f)
@@ -680,22 +724,39 @@ class transfer_loss_shared_encoder2(nn.Module):
         return pc_f,im_f,cent_p,style_transfer_loss#返回点云特征，图像特征，中心点，风格迁移损失
 
 
-
-if __name__ == '__main__':
+def test0():
     import time
-    pc = torch.rand([16, 3500, 3]).cuda()#4个点云，每个点云有2048个点，每个点有3个特征,4*2048*3
+    pc = torch.rand([16, 2048, 3]).cuda()#4个点云，每个点云有2048个点，每个点有3个特征,4*2048*3
     img = torch.rand([16, 3, 224, 224]).cuda()#4个图像，每个图像有3个通道，224*224,4*3*224*224
     #pointmodel=pc_tokenizer().cuda()
     #_,pc_f=pointmodel(pc,pc.transpose(1,2).contiguous())
     #print(pc_f)
+    model = transfer_loss_shared_encoder().cuda()
+    #s = time.time()
+    x1,x2, p,s_l= model(pc,img)
+    #x1是点云数据，x2是图像数据，p是点云数据的中心点，s_l是风格迁移损失
+    #e = time.time()
+    #print(e-s)#打印时间
+    print(x1.shape)#打印点云特征的形状
+    print(x2.shape)#打印图像特征的形状
+    print(s_l)#打印风格迁移损失
+    #model_parameters = filter(lambda p: p.requires_grad, model.parameters())#过滤出需要梯度的参数
+    #parameters = sum([np.prod(p.size()) for p in model_parameters])#计算参数数量
+    #print(f"n parameters:{parameters}")#打印参数数量
 
 
+
+
+
+def test1():
+    import time
+    pc = torch.rand([16, 2048, 3]).cuda()#4个点云，每个点云有2048个点，每个点有3个特征,4*2048*3
+    img = torch.rand([16, 3, 224, 224]).cuda()#4个图像，每个图像有3个通道，224*224,4*3*224*224
     # 加载预训练的点云编码器和图像编码器
     model_path='best_model.pth'
     checkpoint = torch.load(model_path)
     img_model=img_tokenizer2().cuda()
     point_model=pc_tokenizer2().cuda()
-
     #加载模型权重
     img_model.load_state_dict(checkpoint['img_model_state_dict'])
     point_model.load_state_dict(checkpoint['point_model_state_dict'])
@@ -716,22 +777,12 @@ if __name__ == '__main__':
     #torch.Size([16, 768])
     print(point_feats.shape)
     #torch.Size([16, 384])
-
     # 实例化model
     model=transfer_loss_shared_encoder2(point_model,img_model).cuda()
-    #model = transfer_loss_shared_encoder().cuda()
-
-
-    
-    #s = time.time()
     x1,x2, p,s_l= model(pc,img)
-    #x1是点云数据，x2是图像数据，p是点云数据的中心点，s_l是风格迁移损失
-    #e = time.time()
-    #print(e-s)#打印时间
     print(x1.shape)#打印点云特征的形状
     print(x2.shape)#打印图像特征的形状
     print(s_l)#打印风格迁移损失
-    #model_parameters = filter(lambda p: p.requires_grad, model.parameters())#过滤出需要梯度的参数
-    #parameters = sum([np.prod(p.size()) for p in model_parameters])#计算参数数量
-    #print(f"n parameters:{parameters}")#打印参数数量
 
+if __name__ == '__main__':
+    test0()
