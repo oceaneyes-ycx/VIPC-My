@@ -5,7 +5,7 @@ import wandb
 from lightly.loss.ntx_ent_loss import NTXentLoss
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from utils.ViPCdataloader import ViPCDataLoader2
+from utils.ViPCdataloader import ViPCDataLoader3
 from models.encoders import img_tokenizer,img_tokenizer2,pc_tokenizer,pc_tokenizer2
 from config_vipc import cfg
 import torch.optim as optim
@@ -24,7 +24,7 @@ from PIL import ImageFile
 def train(cfg):
     #加载VIPC数据集
     torch.backends.cudnn.benchmark = True
-    ViPC_train = ViPCDataLoader2(r'/home/ycx/code/EGIInet-analy/train_list.txt',
+    ViPC_train = ViPCDataLoader3(r'/home/ycx/code/VIPC-My/train_list.txt',
                                  data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='train',
                                  view_align=False, category=cfg.TRAIN.CATE)
     #只会加载train_list.txt中的类别为cfg.TRAIN.CATE的数据

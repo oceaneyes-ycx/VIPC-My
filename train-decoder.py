@@ -28,7 +28,7 @@ def train(cfg):
 
     #加载数据集
     ViPC_train = ViPCDataLoader2(
-        r'/home/ycx/code/EGIInet-analy/train_list.txt',
+        r'/home/ycx/code/VIPC-My/train_list.txt',
         data_path=cfg.DATASETS.SHAPENET.VIPC_PATH,
         status='train',
         view_align=False,

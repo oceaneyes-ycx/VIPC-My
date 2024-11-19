@@ -20,7 +20,7 @@ __C.CONST.DATA_perfetch                          = 8
 # Directories
 #
 __C.DIR                                          = edict()
-__C.DIR.OUT_PATH                                 = '/home/ycx/code/EGIInet-analy/project_logs'#path to save checkpoints and logs
+__C.DIR.OUT_PATH                                 = '/home/ycx/code/VIPC-My/project_logs'#path to save checkpoints and logs
 __C.CONST.DEVICE                                 = '0,1'
 #
 # Network
@@ -50,7 +50,7 @@ __C.TRAIN.WARMUP_STEPS                           = 1
 __C.TRAIN.GAMMA                                  = 0.7
 __C.TRAIN.BETAS                                  = (.9, .999)
 __C.TRAIN.WEIGHT_DECAY                           = 0
-__C.TRAIN.CATE                                   = 'plane'
+__C.TRAIN.CATE                                   = 'all'
 __C.TRAIN.d_size                                 = 1
 #
 # Test
