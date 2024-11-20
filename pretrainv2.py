@@ -51,8 +51,8 @@ def train(cfg):
     )
 
     # 模型和优化器初始化
-    img_model = img_tokenizer2().cuda()
-    point_model = pc_tokenizer2().cuda()
+    img_model = img_tokenizer2(embed_dim=192).cuda()
+    point_model = pc_tokenizer2(embed_dim=192).cuda()
     
     # 使用DataParallel封装模型
     #img_model = nn.DataParallel(img_model)
@@ -106,12 +106,15 @@ def train(cfg):
             _, _, point_feats = point_model(data, data.transpose(1, 2).contiguous())
 
             point_t1_feats = point_feats[:batch_size, :]
+            #B,384
             point_t2_feats = point_feats[batch_size:, :]
 
             loss_intra = criterion(point_t1_feats, point_t2_feats)
 
             img_rgb_feat, _, _ = img_model(img_rgb)
-            point_feats_combined = torch.cat([point_t1_feats, point_t2_feats], dim=1)
+            #img_rgb_feat:torch.Size([B, 768])
+            #point_feats_combined = torch.cat([point_t1_feats, point_t2_feats], dim=1)
+            point_feats_combined = torch.stack([point_t1_feats, point_t2_feats]).mean(dim=0)
             loss_cross = criterion(img_rgb_feat, point_feats_combined)
 
             total_loss = loss_intra + loss_cross

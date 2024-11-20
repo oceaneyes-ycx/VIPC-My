@@ -546,7 +546,137 @@ class transfer_loss_shared_encoder(nn.Module):
             pc_content_loss=torch.mean((pc_f_list[-1]-pc_f_list[-(self.fuse_layer_num+1)])**2)#str，计算点云数据的内容损失
             style_transfer_loss=pc_content_loss+style_loss#计算风格迁移损失
         return pc_f,im_f,cent_p,style_transfer_loss#返回点云特征，图像特征，中心点，风格迁移损失
-           
+
+class transfer_loss_shared_encoder2(nn.Module):
+    '''
+    自定义多模态编码器，用于多模态特征融合
+    图像编码器暂换为resnet50
+    '''
+    #多模态编码器
+    def __init__(self,
+                 embed_dim=192, 
+                 block_head=12, 
+                 depth=3,
+                 img_patch_size=14,
+                 sample_ratio=0.125, 
+                 scale=2,
+                 norm_args={'norm': 'ln', 'eps': 1.0e-6},
+                 act_args={'act': 'gelu'},
+                 pc_h_hidden_dim=384,
+                 fuse_layer_num=1,
+                 **kwargs
+                 ):
+        '''
+        输入参数：
+        embed_dim：嵌入维度，默认为192
+        block_head：块头，默认为12
+        depth：深度，默认为3，transformer中的block数量
+        img_patch_size：图像补丁大小，默认为14
+        sample_ratio：采样比例，默认为0.125
+        scale：缩放，默认为2
+        '''
+        super().__init__()
+        from timm.models.vision_transformer import Block#transformer搭载模块
+        self.im_to_token=img_tokenizer(patch_size=img_patch_size,embed_dim=embed_dim)
+        self.pc_to_token=pc_tokenizer(sample_ratio=sample_ratio,scale=scale,embed_dim=pc_h_hidden_dim)
+        self.embed_dim=embed_dim#赋值
+        self.fuse_layer_num=fuse_layer_num
+        
+        self.blocks = nn.Sequential(*[
+            Block(
+                dim=embed_dim,
+                num_heads=block_head,
+                mlp_ratio=4.,
+                qkv_bias=True,
+                norm_layer=nn.LayerNorm,
+                act_layer=nn.GELU
+            )
+            for i in range(depth)])
+        '''
+        dim：嵌入维度，默认为embed_dim
+        num_heads：多头自注意力机制的头数，默认为block_head
+        mlp_ratio：MLP的放大倍数，默认为4
+        qkv_bias：在计算query、key和value时是否使用偏置，默认为True
+        norm_layer：归一化层，默认为nn.LayerNorm
+        act_layer：激活函数，默认为nn.GELU
+        '''
+        
+        #跨模态注意力机制
+        self.cross_layer=nn.MultiheadAttention(embed_dim, block_head, batch_first=True)
+        #pytorch中的多头注意力机制
+        #与block中的自注意力不同，这里可以被设计为跨模态注意力机制
+        self.cross_norm=nn.LayerNorm(embed_dim)
+
+        self.depth=depth
+        self.pc_norm = create_norm(norm_args, self.embed_dim)
+        #点云归一化层
+
+        self.im_norm = create_norm(norm_args, self.embed_dim)
+        #图像归一化层
+        self.proj = nn.Linear(self.pc_to_token.out_channels, self.embed_dim)
+        #线性层，输入通道数为pc_to_token的输出通道数，输出通道数为embed_dim
+        #用于将点云数据的特征映射到与图像数据相同的嵌入维度
+
+        self.pc_pos_embed = nn.Sequential(
+            create_linearblock(3, 128, norm_args=None, act_args=act_args),
+            nn.Linear(128, self.embed_dim)
+        )
+        #点云位置嵌入层，用于将点云数据的位置信息嵌入到嵌入空间中
+        #对点云数据的位置信息进行编码
+
+    def forward(self,pc,im):
+        #前向传播函数，接收参数：pc，点云数据（张量）；im，图像数据（张量）
+        B=pc.size(0)
+        p_list,x_list=self.pc_to_token(pc,pc.transpose(1,2).contiguous())
+        #点云数据token化，返回点云数据和特征
+
+        cent_p,pc_f=p_list[-1],self.proj(x_list[-1].transpose(1, 2))
+        #计算点云数据的中心点和特征，将特征映射到与图像数据相同的嵌入维度
+        #返回点云数据的中心点和特征
+        im_f,_,_=self.im_to_token(im)
+        #图像数据token化
+
+        pc_pos_emd = self.pc_pos_embed(cent_p)
+        #计算点云数据的位置嵌入
+
+
+        #存储每个深度层的点云数据和图像数据
+        pc_f_list=[]
+        im_f_list=[]
+
+        for i in range(self.depth):
+            #循环处理每个深度层
+            pc_f = self.blocks[i](pc_f + pc_pos_emd)
+            im_f = self.blocks[i](im_f)
+            pc_f_list.append(pc_f)
+            im_f_list.append(im_f)
+        pc_f=self.pc_norm(pc_f)#点云数据归一化
+        im_f=self.im_norm(im_f)#图像数据归一化
+        x, _ = self.cross_layer(pc_f, im_f, pc_f)#跨模态注意力机制
+        pc_f=self.cross_norm(pc_f+x)#跨模态注意力机制归一化
+
+        if self.fuse_layer_num==0:  #不进行风格迁移
+            im_target_gram = gram_matrix(im_f_list[-1])
+            pc_target_gram = gram_matrix(pc_f_list[-1])
+            style_transfer_loss = torch.mean((im_target_gram - pc_target_gram) ** 2) / (self.embed_dim*256)
+        else:
+            im_target_gram = gram_matrix(im_f_list[-1])#计算图像数据的格拉姆矩阵
+            im_style_gram = gram_matrix(im_f_list[-(self.fuse_layer_num+1)])#计算图像数据的格拉姆矩阵
+            pc_target_gram = gram_matrix(pc_f_list[-1])#计算点云数据的格拉姆矩阵
+            pc_style_gram = gram_matrix(pc_f_list[-(self.fuse_layer_num+1)])#计算点云数据的格拉姆矩阵
+            im_style_loss = torch.mean((im_target_gram - pc_style_gram) ** 2)#计算图像数据的风格损失
+            pc_style_loss = torch.mean((pc_target_gram - im_style_gram) ** 2)#计算点云数据的风格损失
+            style_loss = (im_style_loss+pc_style_loss) / (self.embed_dim*256)#info，256是格拉姆矩阵的维度
+            pc_content_loss=torch.mean((pc_f_list[-1]-pc_f_list[-(self.fuse_layer_num+1)])**2)#str，计算点云数据的内容损失
+            style_transfer_loss=pc_content_loss+style_loss#计算风格迁移损失
+        return pc_f,im_f,cent_p,style_transfer_loss#返回点云特征，图像特征，中心点，风格迁移损失
+
+
+
+
+
+
+
 if __name__ == '__main__':
     import time
     pc = torch.rand([4, 2048, 3]).cuda()#4个点云，每个点云有2048个点，每个点有3个特征,4*2048*3
