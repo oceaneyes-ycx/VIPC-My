@@ -206,8 +206,11 @@ class pc_tokenizer(nn.Module):
         通过计算 log(1/sample_ratio, scale)，我们可以得到需要经过多少次卷积操作才能将输入数据的分辨率降低到1。例如，如果 sample_ratio 是0.5，scale 是2，
         那么 log(1/0.5, 2) 的结果是2，这意味着需要经过2次卷积操作才能将输入数据的分辨率降低到1。'''
         stages = int(math.log(1/sample_ratio, scale))
+        #默认是二阶段，即log(1/0.0625, 4)=2
         #计算每个阶段的嵌入维度
         embed_dim = int(embed_dim // 2 ** (stages-1))
+        #默认是384//2**(2-1)=192
+        #设定embed_dim=128时，第一阶段的嵌入维度是128，第二阶段的嵌入维度是256
 
 
         #开始构建卷积层
