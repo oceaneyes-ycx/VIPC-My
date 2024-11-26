@@ -1,7 +1,7 @@
 '''
 V3-2版本
 图像编码器选择resnet50
-点云编码器选择XMNet的DGCNN
+点云编码器选择crossnet的DGCNN
 '''
 
 '''

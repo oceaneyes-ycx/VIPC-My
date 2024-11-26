@@ -50,7 +50,7 @@ __C.TRAIN.WARMUP_STEPS                           = 1
 __C.TRAIN.GAMMA                                  = 0.7
 __C.TRAIN.BETAS                                  = (.9, .999)
 __C.TRAIN.WEIGHT_DECAY                           = 0
-__C.TRAIN.CATE                                   = 'all'
+__C.TRAIN.CATE                                   = 'all' #TODO:训练使用的类别，不选all的话，写上想要训练的单独类别
 __C.TRAIN.d_size                                 = 1
 #
 # Test
@@ -59,5 +59,5 @@ __C.TEST                                         = edict()
 __C.TEST.METRIC_NAME                             = 'ChamferDistance'
 __C.TEST.CATE                                    = 'plane'
 __C.TEST.BATCH_SIZE                              = 16 #TODO: 测试批次大小
-__C.CONST.WEIGHTS = r"/home/ycx/dataset/checkpoints/all-eight-ckpt-best.pth" #path to pre-trained checkpoints
+__C.CONST.WEIGHTS = r"/home/ycx/dataset/checkpoints/all-eight-ckpt-best.pth" #TODO:path to pre-trained checkpoints
 

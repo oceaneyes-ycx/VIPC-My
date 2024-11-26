@@ -17,11 +17,15 @@ import torchvision.transforms as transforms
 
 from PIL import ImageFile
 
+from models.resnet import ResNet
+from models.dgcnn import DGCNN_cls, DGCNN_partseg, DGCNN_semseg
+from torchvision.models import resnet50, resnet18, resnet101
+
 def load_and_infer(img_rgb, pc_t1, model_path='best_model.pth'):
     # 加载模型
     checkpoint = torch.load(model_path)
-    img_model = img_tokenizer2().cuda()
-    point_model = pc_tokenizer2().cuda()
+    img_model = ResNet(resnet50(), feat_dim = 2048).cuda()
+    point_model = DGCNN_cls(args).cuda()
     
     # 加载模型权重
     img_model.load_state_dict(checkpoint['img_model_state_dict'])
@@ -47,7 +51,6 @@ if __name__ == '__main__':
     # 假设 img_rgb 和 pc_t1 是从数据集中提取的图像和点云数据
     img_rgb = torch.randn(16, 3, 224, 224)
     pc_t1 = torch.randn(16, 3500, 3)
-
     # 使用测试输入进行推理
     img_rgb_feat, point_feats = load_and_infer(img_rgb, pc_t1)
     print("Image Feature:", img_rgb_feat)
