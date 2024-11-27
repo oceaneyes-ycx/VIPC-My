@@ -1,3 +1,6 @@
+'''
+模型推理测试代码，读取模型并进行推理
+'''
 import torch
 import torch.nn as nn
 import os
@@ -12,20 +15,21 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from utils.average_meter import AverageMeter, AverageMeter2
 from datasets.data import ShapeNetRender, ModelNet40SVM, ScanObjectNNSVM
+from utils.loss_utils import *
 
 import torchvision.transforms as transforms
+from models.resnet import ResNet
+from torchvision.models import resnet50, resnet18, resnet101
 
 from PIL import ImageFile
 
-from models.resnet import ResNet
-from models.dgcnn import DGCNN_cls, DGCNN_partseg, DGCNN_semseg
-from torchvision.models import resnet50, resnet18, resnet101
+from encoder_dgcnn.dgcnn import DGCNN
 
 def load_and_infer(img_rgb, pc_t1, model_path='best_model.pth'):
     # 加载模型
     checkpoint = torch.load(model_path)
     img_model = ResNet(resnet50(), feat_dim = 2048).cuda()
-    point_model = DGCNN_cls(args).cuda()
+    point_model = DGCNN().cuda()
     
     # 加载模型权重
     img_model.load_state_dict(checkpoint['img_model_state_dict'])
@@ -41,8 +45,8 @@ def load_and_infer(img_rgb, pc_t1, model_path='best_model.pth'):
         pc_t1 = pc_t1.cuda()
 
         # 提取图像和点云的特征
-        img_rgb_feat, _, _ = img_model(img_rgb)
-        _, _, point_feats = point_model(pc_t1, pc_t1.transpose(1, 2).contiguous())
+        img_rgb_feat = img_model(img_rgb)
+        _, point_feats = point_model(pc_t1.transpose(1, 2).contiguous())
 
     return img_rgb_feat, point_feats
 

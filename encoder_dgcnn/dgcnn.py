@@ -165,6 +165,7 @@ class PointNet(nn.Module):
 
 class DGCNN(nn.Module):
     #DGCNN网络用于特征提取
+    #xmnet原版DGCNN
 
     def __init__(self, output_channels=512):
         super(DGCNN, self).__init__()
@@ -255,6 +256,90 @@ class DGCNN(nn.Module):
 
 
         return point_features, global_features
+
+
+class DGCNN2(nn.Module):
+    #修改之后的DGCNN网络，针对对比学习任务
+    def __init__(self, args, output_channels=512):
+        super(DGCNN2, self).__init__()
+
+        self.k = args.k
+        self.output_channels = args.emb_dims
+        self.bn1 = nn.BatchNorm2d(64)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.bn3 = nn.BatchNorm2d(128)
+        self.bn4 = nn.BatchNorm2d(256)
+        self.bn5 = nn.BatchNorm1d(args.emb_dims)
+
+        self.conv1 = nn.Sequential(nn.Conv2d(6, 64, kernel_size=1, bias=False),
+                                   self.bn1,
+                                   nn.LeakyReLU(negative_slope=0.2))
+
+        self.conv2 = nn.Sequential(nn.Conv2d(64*2, 64, kernel_size=1, bias=False),
+                                   self.bn2,
+                                   nn.LeakyReLU(negative_slope=0.2))
+
+        self.pool1 = EdgePoolingLayer(in_channels=64, k=args.k_pool1,
+                                    ratio=0.5, scoring_fun=args.scoring_fun,
+                                    num_points = args.pool1_points)
+
+        self.conv3 = nn.Sequential(nn.Conv2d(64*2, 128, kernel_size=1, bias=False),
+                                   self.bn3,
+                                   nn.LeakyReLU(negative_slope=0.2))
+
+        self.pool2 = EdgePoolingLayer(in_channels=128, k=args.k_pool2,
+                                    ratio=0.5, scoring_fun=args.scoring_fun,
+                                    num_points = args.pool2_points)
+
+        self.conv4 = nn.Sequential(nn.Conv2d(128*2, 256, kernel_size=1, bias=False),
+                                   self.bn4,
+                                   nn.LeakyReLU(negative_slope=0.2))
+
+        self.conv5 = nn.Sequential(nn.Conv1d(256, self.output_channels, kernel_size=1, bias=False),
+                                   self.bn5,
+                                   nn.LeakyReLU(negative_slope=0.2))
+
+        self.inv_head = nn.Sequential(
+                            nn.Linear(args.emb_dims * 2, args.emb_dims),
+                            nn.BatchNorm1d(args.emb_dims),
+                            nn.ReLU(inplace=True),
+                            nn.Linear(args.emb_dims, 256)
+                            )
+
+    def forward(self, x): #x --> (B X F X N)
+        batch_size = x.size(0)
+        x = get_graph_feature(x, k=self.k)
+        x = self.conv1(x)
+        x1 = x.max(dim=-1, keepdim=False)[0]
+
+        x = get_graph_feature(x1, k=self.k)
+        x = self.conv2(x)
+        x2 = x.max(dim=-1, keepdim=False)[0]
+
+        # SAG Pool N ---> N/2
+        x = self.pool1(x2).permute(0, 2, 1)
+
+        x = get_graph_feature(x, k=self.k)
+        x = self.conv3(x)
+        x3 = x.max(dim=-1, keepdim=False)[0]
+
+        # SAG Pool N/2 ---> N/4
+        x = self.pool2(x3).permute(0, 2, 1)
+
+        x = get_graph_feature(x, k=self.k)
+        x = self.conv4(x)
+        x4 = x.max(dim=-1, keepdim=False)[0]
+
+        x = self.conv5(x4)
+
+        x1 = F.adaptive_max_pool1d(x, 1).view(batch_size, -1)
+        x2 = F.adaptive_avg_pool1d(x, 1).view(batch_size, -1)
+        x = torch.cat((x1, x2), 1)
+
+        inv_feat = self.inv_head(x)
+        return inv_feat, x
+
+
 
 
 if __name__ == '__main__':
