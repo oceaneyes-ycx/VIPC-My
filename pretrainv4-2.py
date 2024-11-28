@@ -7,7 +7,8 @@ V4版本
 v4-2版本
 图像编码器：ResNet50
 点云编码器：XMNET DGCNN
-和v4相比修改了resnet输出维度，使用版本v2，用于后续的特征融合模块，以及修改了DGCNN的架构方式，使其更加适合对比学习
+和v4相比修改了resnet,修改为和XMNET保持一致的resnet18
+总而言之，此版本就是和XMNET保持一致的版本
 '''
 
 
@@ -61,7 +62,7 @@ def train(cfg):
 
     # 模型和优化器初始化
     #img_model = img_tokenizer2().cuda()
-    img_model = ResNet(resnet50(), feat_dim = 2048).cuda()
+    img_model = ResNet2(resnet18(), feat_dim = 512).cuda()
     #point_model = pc_tokenizer2(embed_dim=256).cuda()
     point_model = DGCNN().cuda()
     
@@ -128,7 +129,7 @@ def train(cfg):
 
             loss_intra = criterion(point_t1_feats, point_t2_feats)
 
-            img_rgb_feat= img_model(img_rgb)#修改输出
+            _ ,img_rgb_feat= img_model(img_rgb)#修改输出
             #torch.Size([B, 256])
             #point_feats_combined = torch.cat([point_t1_feats, point_t2_feats], dim=1)
             point_feats_combined = torch.stack([point_t1_feats, point_t2_feats]).mean(dim=0)

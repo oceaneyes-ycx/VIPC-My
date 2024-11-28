@@ -1,360 +1,92 @@
-import os
-import sys
-import copy
-import math
-import numpy as np
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision.models import resnet50,resnet18,resnet101
+import torch
 
 
-import os
-import sys
-import inspect
 
-#import config from the parent directory
-currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-parentdir = os.path.dirname(currentdir)
-sys.path.insert(0, parentdir) 
+class ResNet(nn.Module):
+    #crossnet原版resnet
+    def __init__(self, model, feat_dim = 2048, type = None):
+        super(ResNet, self).__init__()
+        if type == 'gray':
+            model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
-from config import params
-
-args = params()
-
-
-def knn(x, k):
-    #K近邻算法，x为输入的点云，k为近邻数
-    inner = -2*torch.matmul(x.transpose(2, 1), x)
-    #计算点云中点对的内积
-    xx = torch.sum(x**2, dim=1, keepdim=True)
-    #计算每个点的平方和
-    pairwise_distance = -xx - inner - xx.transpose(2, 1)
-    #计算所有点对之间的成对距离
- 
-    idx = pairwise_distance.topk(k=k, dim=-1)[1]   # (batch_size, num_points, k)
-   # idx = pairwise_distance.topk(k=k, dim=-1)[1]
-    return idx#返回k近邻的索引
-
-
-def get_graph_feature(x, k=20, idx=None):
-    #获取图特征，x为输入的点云，k为近邻数，idx为k近邻的索引
-    batch_size = x.size(0)
-    num_points = x.size(2)
-    x = x.view(batch_size, -1, num_points)
-    if idx is None:
-        #在没有提供idx，使用KNN算法计算每个点最近邻的索引
-        idx = knn(x, k=k)   # (batch_size, num_points, k)
-    device = torch.device('cuda')
-
-    idx_base = torch.arange(0, batch_size, device=device).view(-1, 1, 1)*num_points
-
-    idx = idx + idx_base
-
-    idx = idx.view(-1)
+        self.resnet = model
+        self.resnet.fc = nn.Identity()
+        
+        self.inv_head = nn.Sequential(
+                            nn.Linear(feat_dim, 512, bias = False),
+                            nn.BatchNorm1d(512),
+                            nn.ReLU(inplace=True),
+                            nn.Linear(512, 256, bias = False)
+                            ) 
+        
+    def forward(self, x):
+        # print(self.resnet)
+        x = self.resnet(x)
+        x = self.inv_head(x)
+        return x
     
-    #开始提取图特征
-    _, num_dims, _ = x.size()
 
-    x = x.transpose(2, 1).contiguous()   # (batch_size, num_points, num_dims)  -> (batch_size*num_points, num_dims) #   batch_size * num_points * k + range(0, batch_size*num_points)
-    feature = x.view(batch_size*num_points, -1)[idx, :]
-    feature = feature.view(batch_size, num_points, k, num_dims) 
-    x = x.view(batch_size, num_points, 1, num_dims).repeat(1, 1, k, 1)
-    
-    feature = torch.cat((feature-x, x), dim=3).permute(0, 3, 1, 2).contiguous()
-  
-    return feature
-
-def batched_index_select(x, dim, index):
-    #处理多维张量，并在指定维度上根据索引选择元素。
-    for i in range(1, len(x.shape)):
-        if i != dim:
-            index = index.unsqueeze(i)
-    expanse = list(x.shape)
-    expanse[0] = -1
-    expanse[dim] = -1
-    index = index.expand(expanse)
-    return torch.gather(x, dim, index)
-
-
-class EdgePoolingLayer(nn.Module):
-    """ Dynamic Edge Pooling layer - Relued Scores before TopK"""
-    #动态边池化层-在TopK之前的Relued分数，对点云进行池化操作,压缩特征
-
-    def __init__(self, in_channels, k, ratio=0.5, scoring_fun="tanh", num_points=-1):
-        super().__init__()
-        self.in_channels = in_channels
-        self.k = k
-        self.ratio = ratio
-        self.score_layer = nn.Conv2d(in_channels * 2, 1, kernel_size=1, bias=True)
-        self.scoring_fun = scoring_fun
-        self.num_points = num_points
-
-    def __str__(self):
-        return 'EdgePoolingLayer(in_channels=' + str(self.in_channels) + ', k=' + str(self.k) + ', ratio=' + str(
-            self.ratio) + ', scoring_fun=' + str(self.scoring_fun) + ', num_points=' + str(self.num_points) + ')'
-
-    def forward(self, feat, idx=None):
-        batch_size, dim, in_points = feat.size()  # (batch_size, α, in_points)
-        assert dim == self.in_channels
-
-        # Dynamic Edge Conv
-        # Re-computing graph before pooling
-        x = get_graph_feature(feat, k=self.k, idx=idx)  # (batch_size, α * 2, in_points, self.k)
-        x = self.score_layer(x)  # (batch_size, 1, in_points, self.k)
-
-      
-        scores = F.relu(x.max(dim=-1, keepdim=False)[0])  # (batch_size, 1, in_points)
-
-        if self.num_points < 0:
-            # default - 'num_points' not specified, use 'ratio'
-            num_keypoints = math.floor(in_points * self.ratio)
-        else:
-            # do not use ratio but sample a fixed number of points 'num_points'
-            assert self.num_points < in_points, \
-                "Pooling more points (%d) than input ones (%d) !" % (self.num_points, in_points)
-            num_keypoints = self.num_points
-        #print(scores.shape)
-
-        top, top_idxs = torch.topk(scores.squeeze(dim=1), k=num_keypoints, dim=1)
-        new_feat = batched_index_select(feat.permute(0, 2, 1), 1, top_idxs) 
-        top = top.unsqueeze(2)
-
-        # Apply scoring function!
-        if self.scoring_fun == 'tanh':
-            new_feat = new_feat * torch.tanh(top)
-        elif self.scoring_fun == 'softmax':
-            new_feat = new_feat * F.softmax(top, dim=1)
-        elif self.scoring_fun == 'leaky-relu':
-            new_feat = new_feat * F.leaky_relu(top, negative_slope=0.001)
-
-        return new_feat
-
-
-
-class PointNet(nn.Module):
-    #pointnet网络
-    def __init__(self, output_channels=40):
-        super(PointNet, self).__init__()
-        self.conv1 = nn.Conv1d(3, 64, kernel_size=1, bias=False)
-        self.conv2 = nn.Conv1d(64, 64, kernel_size=1, bias=False)
-        self.conv3 = nn.Conv1d(64, 64, kernel_size=1, bias=False)
-        self.conv4 = nn.Conv1d(64, 128, kernel_size=1, bias=False)
-        self.conv5 = nn.Conv1d(128, args.emb_dims, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(64)
-        self.bn3 = nn.BatchNorm1d(64)
-        self.bn4 = nn.BatchNorm1d(128)
-        self.bn5 = nn.BatchNorm1d(args.emb_dims)
-        self.linear1 = nn.Linear(args.emb_dims, 512, bias=False)
-        self.bn6 = nn.BatchNorm1d(512)
-        self.dp1 = nn.Dropout()
-        self.linear2 = nn.Linear(512, output_channels)
+class ResNet2(nn.Module):
+    #resnet2 版本，使用xmnet的方式输出了空间特征，同时修订了全局特征的提取方式
+    #采用了crossnet的逆向特征头的方式，此类调用时只可以使用resnet18,同时feat_dim设定为512!
+    def __init__(self, model, feat_dim = 2048, type = None):
+        super(ResNet2, self).__init__()
+        
+        # 修改第一层卷积以适应灰度图像
+        if type == 'gray':
+            model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        
+        # 保留所有层以获取全局特征
+        self.resnet = model
+        
+        # 去掉最后的全连接层
+        self.resnet.fc = nn.Identity()
+        
+        # 添加inv_head模块
+        self.inv_head = nn.Sequential(
+            nn.Linear(feat_dim, 512, bias=False),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, 256, bias=False)
+        )
+        
+        # 提取空间特征的层
+        self.base_layers = nn.Sequential(*list(model.children())[:-3])
+        self.spatial_features_size = 256  # layer3输出通道数为256
 
     def forward(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
-        x = F.relu(self.bn4(self.conv4(x)))
-        x = F.relu(self.bn5(self.conv5(x)))
-        x = F.adaptive_max_pool1d(x, 1).squeeze()
-        x = F.relu(self.bn6(self.linear1(x)))
-        x = self.dp1(x)
-        x = self.linear2(x)
-        return x
+        #x:[16, 3, 224, 224]
 
+        # 获取空间特征
+        spatial_features = self.base_layers(x)  # shape: (16, 256, 14, 14)
 
-class DGCNN(nn.Module):
-    #DGCNN网络用于特征提取
-    #xmnet原版DGCNN
-
-    def __init__(self, output_channels=512):
-        super(DGCNN, self).__init__()
-
-        self.k = args.k
-        self.output_channels = args.emb_dims
-        self.bn1 = nn.BatchNorm2d(64)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.bn3 = nn.BatchNorm2d(128)
-        self.bn4 = nn.BatchNorm2d(256)
-        self.bn5 = nn.BatchNorm1d(args.emb_dims)
-
-        self.conv1 = nn.Sequential(nn.Conv2d(6, 64, kernel_size=1, bias=False),
-                                   self.bn1,
-                                   nn.LeakyReLU(negative_slope=0.2))
-
-        self.conv2 = nn.Sequential(nn.Conv2d(64*2, 64, kernel_size=1, bias=False),
-                                   self.bn2,
-                                   nn.LeakyReLU(negative_slope=0.2))
-
-        self.pool1 = EdgePoolingLayer(in_channels=64, k=args.k_pool1,
-                                    ratio=0.5, scoring_fun=args.scoring_fun,
-                                    num_points = args.pool1_points)
-
-        self.conv3 = nn.Sequential(nn.Conv2d(64*2, 128, kernel_size=1, bias=False),
-                                   self.bn3,
-                                   nn.LeakyReLU(negative_slope=0.2))
-
-        self.pool2 = EdgePoolingLayer(in_channels=128, k=args.k_pool2,
-                                    ratio=0.5, scoring_fun=args.scoring_fun,
-                                    num_points = args.pool2_points)
-
-        self.conv4 = nn.Sequential(nn.Conv2d(128*2, 256, kernel_size=1, bias=False),
-                                   self.bn4,
-                                   nn.LeakyReLU(negative_slope=0.2))
-
-        self.conv5 = nn.Sequential(nn.Conv1d(256, self.output_channels, kernel_size=1, bias=False), #input dimension prima era 512
-                                   self.bn5,
-                                   nn.LeakyReLU(negative_slope=0.2))
-
+        spatial_features = spatial_features.view(x.size(0), self.spatial_features_size, -1)  # shape: (batch_size, 256, H*W)
+        #[16, 256, 196]   需要的空间特征
+        # 继续前向传播到全局特征
+        global_features = self.resnet(x)  # shape: (batch_size, 512)     (16,512)
+        global_features = self.inv_head(global_features)  # shape: (batch_size, 256)
         
-
-    def forward(self, x): #x --> (B X F X N)
-        #x为输入的点云：torch.size([B,3,2048])
-        x = get_graph_feature(x, k=self.k)
-        #x: torch.size([B,6,2048,20]) 为获取到的图特征
-        x = self.conv1(x)
-        x1 = x.max(dim=-1, keepdim=False)[0]
-        #x1: torch.size([B,64,2048]) 为第一次卷积后的特征
-        x = get_graph_feature(x1, k=self.k)
-        #x: torch.size([B,128,2048,20]) 为第一次卷积后进而获取的图特征
-        x = self.conv2(x)
-        #x: torch.size([B,64,2048]) 为第二次卷积后的特征        
-        x2 = x.max(dim=-1, keepdim=False)[0]
-        #x2: torch.size([B,64,2048])最后一个维度上进行池化操作
-        
-
-        #SAG Pool N ---> N/2
-        x = self.pool1(x2).permute(0, 2, 1)
-        #x: torch.size([B,64,512]) 为第一次池化后的特征
-        x = get_graph_feature(x, k=self.k)
-        #x: torch.size([B,128,512,20]) 为第一次池化后进而获取的图特征
-        x = self.conv3(x)#第三次卷积，
-        #x: torch.size([B,128,512,20]) 为第三次卷积后的特征
-        x3 = x.max(dim=-1, keepdim=False)[0]
-        #x3: torch.size([B,128,512])最后一个维度上进行池化操作
-        #SAG Pool N/2 ---> N/4
-        x = self.pool2(x3).permute(0, 2, 1)
-        #x: torch.size([B,128,128]) 为第二次池化后的特征
-        x = get_graph_feature(x, k=self.k)
-        #x: torch.size([B,256,128,20]) 为第二次池化后进而获取的图特征
-        x = self.conv4(x)
-        #x: torch.size([B,256,128,20]) 为第四次卷积后的特征
-        x4 = x.max(dim=-1, keepdim=False)[0]
-        #x4: torch.size([B,256,128])最后一个维度上进行池化操作
-        x = self.conv5(x4)
-        #x: torch.size([B,256,128]),最后一次卷积后的特征,也是最终的特征  
-        # #256:特征维度，每个点经过网络编码后被表示为一个256维的向量
-        # #128:点云数量，原始点云经过两次池化后，点云数量减半，即2048->512->128   
-        
-        # 原始输出
-        point_features = x  # torch.Size([B, 256, 128])
-
-        # 新增的全局池化操作，得到对比学习的特征
-        global_features = torch.max(point_features, dim=-1)[0]  # Global Max Pooling
-        # global_features = torch.mean(point_features, dim=-1) # 如果需要 GAP，可以替换为此行
-
-
-
-        return point_features, global_features
-
-
-class DGCNN2(nn.Module):
-    #修改之后的DGCNN网络，针对对比学习任务
-    def __init__(self, output_channels=512):
-        super(DGCNN2, self).__init__()
-
-        self.k = args.k
-        self.output_channels = args.emb_dims
-        self.bn1 = nn.BatchNorm2d(64)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.bn3 = nn.BatchNorm2d(128)
-        self.bn4 = nn.BatchNorm2d(256)
-        self.bn5 = nn.BatchNorm1d(args.emb_dims)
-
-        self.conv1 = nn.Sequential(nn.Conv2d(6, 64, kernel_size=1, bias=False),
-                                   self.bn1,
-                                   nn.LeakyReLU(negative_slope=0.2))
-
-        self.conv2 = nn.Sequential(nn.Conv2d(64*2, 64, kernel_size=1, bias=False),
-                                   self.bn2,
-                                   nn.LeakyReLU(negative_slope=0.2))
-
-        self.pool1 = EdgePoolingLayer(in_channels=64, k=args.k_pool1,
-                                    ratio=0.5, scoring_fun=args.scoring_fun,
-                                    num_points = args.pool1_points)
-
-        self.conv3 = nn.Sequential(nn.Conv2d(64*2, 128, kernel_size=1, bias=False),
-                                   self.bn3,
-                                   nn.LeakyReLU(negative_slope=0.2))
-
-        self.pool2 = EdgePoolingLayer(in_channels=128, k=args.k_pool2,
-                                    ratio=0.5, scoring_fun=args.scoring_fun,
-                                    num_points = args.pool2_points)
-
-        self.conv4 = nn.Sequential(nn.Conv2d(128*2, 256, kernel_size=1, bias=False),
-                                   self.bn4,
-                                   nn.LeakyReLU(negative_slope=0.2))
-
-        self.conv5 = nn.Sequential(nn.Conv1d(256, self.output_channels, kernel_size=1, bias=False),
-                                   self.bn5,
-                                   nn.LeakyReLU(negative_slope=0.2))
-
-        self.inv_head = nn.Sequential(
-                            nn.Linear(args.emb_dims * 2, args.emb_dims),
-                            nn.BatchNorm1d(args.emb_dims),
-                            nn.ReLU(inplace=True),
-                            nn.Linear(args.emb_dims, 256)
-                            )
-
-    def forward(self, x): #x --> (B X F X N)
-        #x:[1,3,2048]
-        batch_size = x.size(0)
-        x = get_graph_feature(x, k=self.k)#x:[1,6,2048,20]
-
-        x = self.conv1(x)#x:[1,64,2048,20]
-        x1 = x.max(dim=-1, keepdim=False)[0]#x1:[1,64,2048]
-
-        x = get_graph_feature(x1, k=self.k)#x:[1,128,2048,20]
-        x = self.conv2(x)#x:[1,64,2048,20]
-        x2 = x.max(dim=-1, keepdim=False)[0]#x2:[1,64,2048]
-
-        # SAG Pool N ---> N/2
-        x = self.pool1(x2).permute(0, 2, 1)#x:[1,64,512]
-
-        x = get_graph_feature(x, k=self.k)#x:[1,128,512,20]
-        x = self.conv3(x)#x:[1,128,512,20]
-        x3 = x.max(dim=-1, keepdim=False)[0]#x3:[1,128,512]
-
-        # SAG Pool N/2 ---> N/4
-        x = self.pool2(x3).permute(0, 2, 1)#x:[1,128,128]
-
-        x = get_graph_feature(x, k=self.k)#x:[1,256,128,20]
-        x = self.conv4(x)#x:[1,256,128,20]
-        x4 = x.max(dim=-1, keepdim=False)[0]#x4:[1,256,128]
-
-        x = self.conv5(x4)#x:[1,256,128]
-        
-        y = x  #保存特征，用于对比学习
-
-        x1 = F.adaptive_max_pool1d(x, 1).view(batch_size, -1)#[1,256]
-        x2 = F.adaptive_avg_pool1d(x, 1).view(batch_size, -1)#x2:[1,256]
-        x = torch.cat((x1, x2), 1)#x:[1,512]
-
-        inv_feat = self.inv_head(x)
-        return inv_feat, y
+        return spatial_features, global_features
 
 
 
 
 if __name__ == '__main__':
 
+    img_model = ResNet2(resnet18(), feat_dim = 512).cuda()
+    img = torch.randn(16, 3, 224, 224).cuda()
 
-    x = torch.randn(1, 3, 2048).cuda()
-    model = DGCNN2().cuda()
-    out1,out2 = model(x)
-    #out1:torch.size([1,256,128])   空间特征
-    #out2:torch.size([1,256])    全局特征
-    print(out1.shape)
-    print(out2.shape) 
-                    
-   
+    # 前向传播
+    processed_features, raw_features = img_model(img)
+    
+    # 打印输出的特征张量
+    print("global_features:", processed_features.shape)
+    print("spatial_features:", raw_features.shape)
+
+
+    #img_model2=ResNet(resnet50(), feat_dim = 2048).cuda()
+    #x=img_model2(img)
+    #print(x.shape)

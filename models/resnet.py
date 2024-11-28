@@ -30,55 +30,53 @@ class ResNet(nn.Module):
     
 
 class ResNet2(nn.Module):
-    #大修的resnet，谨慎！
-    def __init__(self, model, feat_dim=2048, type=None):
+    #resnet2 版本，使用xmnet的方式输出了空间特征，同时修订了全局特征的提取方式
+    #采用了crossnet的逆向特征头的方式，此类调用时只可以使用resnet18,同时feat_dim设定为512!
+    def __init__(self, model, feat_dim = 2048, type = None):
         super(ResNet2, self).__init__()
+        
+        # 修改第一层卷积以适应灰度图像
         if type == 'gray':
             model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
-        # 提取空间特征的主干网络
-        self.spatial_base = nn.Sequential(*list(model.children())[:-3])
-
-        # 多步降维，逐步将通道数降至 256
-        self.spatial_projection = nn.Sequential(
-            nn.Conv2d(1024, 512, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 256, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True)
-        )
-
-        # 提取全局特征的完整主干网络
+        
+        # 保留所有层以获取全局特征
         self.resnet = model
+        
+        # 去掉最后的全连接层
         self.resnet.fc = nn.Identity()
-
-        # 全局特征映射头
+        
+        # 添加inv_head模块
         self.inv_head = nn.Sequential(
             nn.Linear(feat_dim, 512, bias=False),
             nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
             nn.Linear(512, 256, bias=False)
         )
+        
+        # 提取空间特征的层
+        self.base_layers = nn.Sequential(*list(model.children())[:-3])
+        self.spatial_features_size = 256  # layer3输出通道数为256
 
     def forward(self, x):
-        # 提取空间特征
-        spatial_features = self.spatial_base(x)  # [batch_size, 1024, 14, 14]
-        spatial_features = self.spatial_projection(spatial_features)  # [batch_size, 256, 14, 14]
-        spatial_features = spatial_features.view(spatial_features.size(0), 256, -1)  # [batch_size, 256, 196]
+        #x:[16, 3, 224, 224]
 
-        # 提取全局特征
-        global_features = self.resnet(x)  # [batch_size, feat_dim]
-        global_features = self.inv_head(global_features)  # [batch_size, 256]
+        # 获取空间特征
+        spatial_features = self.base_layers(x)  # shape: (16, 256, 14, 14)
 
-        return global_features, spatial_features
+        spatial_features = spatial_features.view(x.size(0), self.spatial_features_size, -1)  # shape: (batch_size, 256, H*W)
+        #[16, 256, 196]   需要的空间特征
+        # 继续前向传播到全局特征
+        global_features = self.resnet(x)  # shape: (batch_size, 512)     (16,512)
+        global_features = self.inv_head(global_features)  # shape: (batch_size, 256)
+        
+        return spatial_features, global_features
 
 
 
 
 if __name__ == '__main__':
 
-    img_model = ResNet2(resnet50(), feat_dim = 2048).cuda()
+    img_model = ResNet2(resnet18(), feat_dim = 512).cuda()
     img = torch.randn(16, 3, 224, 224).cuda()
 
     # 前向传播
@@ -89,6 +87,6 @@ if __name__ == '__main__':
     print("spatial_features:", raw_features.shape)
 
 
-    img_model2=ResNet(resnet50(), feat_dim = 2048).cuda()
-    x=img_model2(img)
-    print(x.shape)
+    #img_model2=ResNet(resnet50(), feat_dim = 2048).cuda()
+    #x=img_model2(img)
+    #print(x.shape)
