@@ -9,22 +9,33 @@ chamfer_dist = dist_chamfer_3D.chamfer_3DDist()
 
 emd_dist=emdModule()
 import utils.furthestPointSampling.fps as fps
+
+
 def farthest_point_sample(xyz, npoints):
+    #FPS采样
+    #xyz: [B, N, 3], npoints: int
+    #输入点云数据和采样点数，返回采样点云数据
     idx = fps.furthest_point_sample(xyz, npoints)
     new_points = fps.gather_operation(xyz.transpose(1, 2).contiguous(), idx).transpose(1, 2).contiguous()
     return new_points
+
+
 def emd_loss(x1,x2):
+    #EMD距离损失
+    #输入两个点云数据，返回EMD距离
     dis, assigment = emd_dist(x1, x2, 0.05, 3000)
     emd=torch.sqrt(dis).mean()
     return emd
 
 
 def chamfer(p1, p2):
+    #计算两个点云之间的CD距离
     d1, d2, _, _ = chamfer_dist(p1, p2)
     return torch.mean(d1) + torch.mean(d2)
 
 
 def chamfer_sqrt(p1, p2):
+    #计算两个点云之间的CD距离的平方根
     d1, d2, _, _ = chamfer_dist(p1, p2)
     d1 = torch.mean(torch.sqrt(d1))
     d2 = torch.mean(torch.sqrt(d2))
@@ -32,12 +43,14 @@ def chamfer_sqrt(p1, p2):
 
 
 def chamfer_single_side(pcd1, pcd2):
+    #只考虑pcd1到pcd2的单向CD距离
     d1, d2, _, _ = chamfer_dist(pcd1, pcd2)
     d1 = torch.mean(d1)
     return d1
 
 
 def chamfer_single_side_sqrt(pcd1, pcd2):
+    #只考虑pcd1到pcd2的单向CD距离的平方根
     d1, d2, _, _ = chamfer_dist(pcd1, pcd2)
     d1 = torch.mean(torch.sqrt(d1))
     return d1
@@ -55,30 +68,48 @@ def chamfer_single_side_sqrt(pcd1, pcd2):
 #         return cd_p, cd_t
 
 def calc_cd(output, gt, calc_f1=False, return_raw=False, normalize=False, separate=False):
-    cham_loss = dist_chamfer_3D.chamfer_3DDist()
+    '''
+    用于计算两个点云之间的CD距离,并根据需要返回CD距离，CD距离的平方根，F1分数
+    output: 生成的点云数据
+    gt: GT点云数据
+    calc_f1: 是否计算F1分数
+    return_raw: 是否返回原始数据
+    normalize: 是否归一化
+    separate: 是否分开返回两个点云之间的CD距离
+    '''
+    cham_loss = dist_chamfer_3D.chamfer_3DDist() #CD距离计算器
     # cham_loss = cd()
     dist1, dist2, idx1, idx2 = cham_loss(gt, output)
+    #用CD距离计算器计算补全的点云和GT点云之间的CD距离
     cd_p = (torch.sqrt(dist1).mean(1) + torch.sqrt(dist2).mean(1)) / 2
+    #计算CD距离的平方根平均值
     cd_t = (dist1.mean(1) + dist2.mean(1))
+    #计算CD距离的直接平均值
 
-    if separate:
+    if separate:#如果需要分开返回两个点云之间的CD距离
         res = [torch.cat([torch.sqrt(dist1).mean(1).unsqueeze(0), torch.sqrt(dist2).mean(1).unsqueeze(0)]),
                torch.cat([dist1.mean(1).unsqueeze(0),dist2.mean(1).unsqueeze(0)])]
-    else:
+    else:#以一个列表的形式返回CD距离和CD距离的平方根
         res = [cd_p, cd_t]
-    if calc_f1:
+    if calc_f1:#如果需要计算F1分数
         f1, _, _ = fscore(dist1, dist2)
         res.append(f1)
-    if return_raw:
+    if return_raw:#如果需要返回原始数据
         res.extend([dist1, dist2, idx1, idx2])
     return res
 
 def calc_dcd(x, gt, alpha=1000, n_lambda=1, return_raw=False, non_reg=False):
+    '''
+    计算两个点云之间的DCD距离
+    x: 生成的点云数据
+    gt: GT点云数据
+    '''
     x = x.float()
     gt = gt.float()
+    #将数据转换为float类型
     batch_size, n_x, _ = x.shape
     batch_size, n_gt, _ = gt.shape
-    assert x.shape[0] == gt.shape[0]
+    assert x.shape[0] == gt.shape[0]#确保batch_size相同
 
     if non_reg:
         frac_12 = max(1, n_x / n_gt)
@@ -88,10 +119,12 @@ def calc_dcd(x, gt, alpha=1000, n_lambda=1, return_raw=False, non_reg=False):
         frac_21 = n_gt / n_x
 
     cd_p, cd_t, dist1, dist2, idx1, idx2 = calc_cd(x, gt, return_raw=True)
+    #计算两个点云之间的CD距离
     # dist1 (batch_size, n_gt): a gt point finds its nearest neighbour x' in x;
     # idx1  (batch_size, n_gt): the idx of x' \in [0, n_x-1]
     # dist2 and idx2: vice versa
     exp_dist1, exp_dist2 = torch.exp(-dist1 * alpha), torch.exp(-dist2 * alpha)
+    #计算距离的指数衰减值
 
     count1 = torch.zeros_like(idx2)
     count1.scatter_add_(1, idx1.long(), torch.ones_like(idx1))

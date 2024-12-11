@@ -18,7 +18,7 @@ from datasets.data import ShapeNetRender, ModelNet40SVM, ScanObjectNNSVM
 from utils.loss_utils import *
 
 import torchvision.transforms as transforms
-from models.resnet import ResNet
+from models.resnet import ResNet, ResNet2
 from torchvision.models import resnet50, resnet18, resnet101
 
 from PIL import ImageFile
@@ -28,7 +28,7 @@ from encoder_dgcnn.dgcnn import DGCNN
 def load_and_infer(img_rgb, pc_t1, model_path='best_model.pth'):
     # 加载模型
     checkpoint = torch.load(model_path)
-    img_model = ResNet(resnet50(), feat_dim = 2048).cuda()
+    img_model = ResNet2(resnet18(), feat_dim = 512).cuda()
     point_model = DGCNN().cuda()
     
     # 加载模型权重
@@ -45,7 +45,7 @@ def load_and_infer(img_rgb, pc_t1, model_path='best_model.pth'):
         pc_t1 = pc_t1.cuda()
 
         # 提取图像和点云的特征
-        img_rgb_feat = img_model(img_rgb)
+        space_feat,img_rgb_feat = img_model(img_rgb)
         _, point_feats = point_model(pc_t1.transpose(1, 2).contiguous())
 
     return img_rgb_feat, point_feats
