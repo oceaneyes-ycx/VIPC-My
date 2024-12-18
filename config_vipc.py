@@ -22,6 +22,7 @@ __C.CONST.DATA_perfetch                          = 8
 __C.DIR                                          = edict()
 __C.DIR.OUT_PATH                                 = '/home/ycx/code/VIPC-My/project_logs'#path to save checkpoints and logs
 __C.CONST.DEVICE                                 = '0,1'
+__C.DIR.CHECKPOINTS                              = '../checkpoints/VIPC'
 #
 # Network
 #
@@ -40,8 +41,8 @@ __C.NETWORK.shared_encoder.pc_h_hidden_dim       = 192
 # Train
 #
 __C.TRAIN                                        = edict()
-__C.TRAIN.BATCH_SIZE                             = 4 #TODO: 训练批次大小
-__C.TRAIN.N_EPOCHS                               = 100
+__C.TRAIN.BATCH_SIZE                             = 16 #TODO: 训练批次大小
+__C.TRAIN.N_EPOCHS                               = 120
 __C.TRAIN.SAVE_FREQ                              = 40
 __C.TRAIN.LEARNING_RATE                          = 0.001
 __C.TRAIN.LR_MILESTONES                          = [16,32,48,64,80,96,112,128,144]
@@ -50,7 +51,7 @@ __C.TRAIN.WARMUP_STEPS                           = 1
 __C.TRAIN.GAMMA                                  = 0.7
 __C.TRAIN.BETAS                                  = (.9, .999)
 __C.TRAIN.WEIGHT_DECAY                           = 0
-__C.TRAIN.CATE                                   = 'all' #TODO:训练使用的类别，不选all的话，写上想要训练的单独类别
+__C.TRAIN.CATE                                   = 'plane' #TODO:训练使用的类别，不选all的话，写上想要训练的单独类别
 __C.TRAIN.d_size                                 = 1
 #
 # Test
@@ -61,3 +62,7 @@ __C.TEST.CATE                                    = 'plane'
 __C.TEST.BATCH_SIZE                              = 16 #TODO: 测试批次大小
 __C.CONST.WEIGHTS = r"/home/ycx/dataset/checkpoints/all-eight-ckpt-best.pth" #TODO:path to pre-trained checkpoints
 
+
+#
+# PreTrain 对比学习预训练中使用的参数
+#

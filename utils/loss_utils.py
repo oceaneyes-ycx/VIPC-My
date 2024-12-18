@@ -36,6 +36,7 @@ def chamfer(p1, p2):
 
 def chamfer_sqrt(p1, p2):
     #计算两个点云之间的CD距离的平方根
+    #L1 CD loss
     d1, d2, _, _ = chamfer_dist(p1, p2)
     d1 = torch.mean(torch.sqrt(d1))
     d2 = torch.mean(torch.sqrt(d2))

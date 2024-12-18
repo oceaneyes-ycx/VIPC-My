@@ -24,7 +24,7 @@ from config import params
 p = params()
 
 class Network(nn.Module):
-    def __init__(self, pretrained_model_path="best_model.pth"):
+    def __init__(self, pretrained_model_path="./weights/best_model.pth"):
         super(Network, self).__init__()
 
         #点云和图像的编码器
@@ -119,6 +119,6 @@ if __name__ == '__main__':
    
     x_part = torch.randn(16, 2048,3).cuda()
     view = torch.randn(16, 3, 224, 224).cuda()
-    model = Network(pretrained_model_path="best_model.pth").cuda()
+    model = Network(pretrained_model_path="./weights/best_model.pth").cuda()
     out = model(x_part, view)
     print(out.shape) 
