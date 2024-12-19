@@ -131,6 +131,9 @@ class EdgePoolingLayer(nn.Module):
 
 
 
+
+
+
 class PointNet(nn.Module):
     #pointnet网络
     def __init__(self, output_channels=40):
@@ -339,7 +342,86 @@ class DGCNN2(nn.Module):
         inv_feat = self.inv_head(x)
         return inv_feat, x
 
+class DGCNN3(nn.Module):
+    def __init__(self, args):
+        super(DGCNN3, self).__init__()
+        self.k = args.k
+        self.emb_dims = args.emb_dims
 
+        # 原始卷积模块
+        self.bn1 = nn.BatchNorm2d(64)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.bn3 = nn.BatchNorm2d(128)
+        self.bn4 = nn.BatchNorm2d(256)
+        self.bn5 = nn.BatchNorm1d(self.emb_dims)
+
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(6, 64, kernel_size=1, bias=False),
+            self.bn1,
+            nn.LeakyReLU(negative_slope=0.2)
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(64 * 2, 64, kernel_size=1, bias=False),
+            self.bn2,
+            nn.LeakyReLU(negative_slope=0.2)
+        )
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(64 * 2, 128, kernel_size=1, bias=False),
+            self.bn3,
+            nn.LeakyReLU(negative_slope=0.2)
+        )
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(128 * 2, 256, kernel_size=1, bias=False),
+            self.bn4,
+            nn.LeakyReLU(negative_slope=0.2)
+        )
+        self.conv5 = nn.Sequential(
+            nn.Conv1d(256, self.emb_dims, kernel_size=1, bias=False),
+            self.bn5,
+            nn.LeakyReLU(negative_slope=0.2)
+        )
+
+        # 新增 inv_head 模块
+        self.inv_head = nn.Sequential(
+            nn.Linear(self.emb_dims * 2, self.emb_dims),
+            nn.BatchNorm1d(self.emb_dims),
+            nn.ReLU(inplace=True),
+            nn.Linear(self.emb_dims, 256)
+        )
+
+    def forward(self, x):
+        batch_size = x.size(0)
+
+        # 图特征提取
+        x = get_graph_feature(x, k=self.k)
+        x = self.conv1(x)
+        x1 = x.max(dim=-1, keepdim=False)[0]
+
+        x = get_graph_feature(x1, k=self.k)
+        x = self.conv2(x)
+        x2 = x.max(dim=-1, keepdim=False)[0]
+
+        x = get_graph_feature(x2, k=self.k)
+        x = self.conv3(x)
+        x3 = x.max(dim=-1, keepdim=False)[0]
+
+        x = get_graph_feature(x3, k=self.k)
+        x = self.conv4(x)
+        x4 = x.max(dim=-1, keepdim=False)[0]
+
+        # 特征拼接
+        x = self.conv5(x4)  # (batch_size, emb_dims, num_points)
+        point_features = x
+
+        # 全局池化提取全局特征
+        x1 = F.adaptive_max_pool1d(x, 1).view(batch_size, -1)
+        x2 = F.adaptive_avg_pool1d(x, 1).view(batch_size, -1)
+        global_features = torch.cat((x1, x2), 1)
+
+        # 使用 inv_head 生成对比学习特征
+        contrastive_features = self.inv_head(global_features)
+
+        return point_features, contrastive_features
 
 
 if __name__ == '__main__':

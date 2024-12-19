@@ -60,9 +60,23 @@ __C.TEST                                         = edict()
 __C.TEST.METRIC_NAME                             = 'ChamferDistance'
 __C.TEST.CATE                                    = 'plane'
 __C.TEST.BATCH_SIZE                              = 16 #TODO: 测试批次大小
-__C.CONST.WEIGHTS = r"/home/ycx/dataset/checkpoints/all-eight-ckpt-best.pth" #TODO:path to pre-trained checkpoints
+__C.CONST.WEIGHTS = r"/home/ycx/code/checkpoints/EGIInet/plane-ckpt-best.pth" #TODO:path to pre-trained checkpoints
 
 
 #
 # PreTrain 对比学习预训练中使用的参数
 #
+__C.PRETRAIN                                        = edict()
+__C.PRETRAIN.BATCH_SIZE                             = 4 #TODO: 对比学习训练批次大小
+__C.PRETRAIN.N_EPOCHS                               = 120 #对比学习训练轮数
+__C.PRETRAIN.LEARNING_RATE                          = 0.001
+__C.PRETRAIN.CATE                                   = 'plane' #TODO:训练使用的类别，不选all的话，写上想要训练的单独类别
+
+
+
+
+
+
+
+
+

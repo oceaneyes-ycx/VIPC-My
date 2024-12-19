@@ -30,7 +30,7 @@ def test_net(cfg, epoch_idx=-1, test_data_loader=None, test_writer=None, model=N
         # Set up data loader
         # 创建ViPC测试数据加载器
 
-        ViPC_test = ViPCDataLoader(r'/home/ycx/code/EGIInet-analy/test_list.txt',
+        ViPC_test = ViPCDataLoader(r'/home/ycx/code/VIPC-My/test_list.txt',
                                    data_path=cfg.DATASETS.SHAPENET.VIPC_PATH,
                                    status='test',
                                    view_align=False, category=cfg.TEST.CATE)
