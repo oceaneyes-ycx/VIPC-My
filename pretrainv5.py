@@ -39,7 +39,7 @@ from torchvision.models import resnet50, resnet18, resnet101
 
 from PIL import ImageFile
 
-from encoder_dgcnn.dgcnn import DGCNN
+from encoder_dgcnn.dgcnn import DGCNN,DGCNN2
 
 def train(cfg):
     # 初始化WandB
@@ -68,7 +68,7 @@ def train(cfg):
     #img_model = img_tokenizer2().cuda()
     img_model = ResNet2(resnet18(), feat_dim = 512).cuda()
     #point_model = pc_tokenizer2(embed_dim=256).cuda()
-    point_model = DGCNN().cuda()
+    point_model = DGCNN2().cuda()
     
     # 使用DataParallel封装模型
     #img_model = nn.DataParallel(img_model)

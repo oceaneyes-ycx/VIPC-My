@@ -263,7 +263,7 @@ class DGCNN(nn.Module):
 
 class DGCNN2(nn.Module):
     #修改之后的DGCNN网络，针对对比学习任务
-    def __init__(self, args, output_channels=512):
+    def __init__(self,  output_channels=512):
         super(DGCNN2, self).__init__()
 
         self.k = args.k
@@ -333,17 +333,19 @@ class DGCNN2(nn.Module):
         x = self.conv4(x)
         x4 = x.max(dim=-1, keepdim=False)[0]
 
-        x = self.conv5(x4)
+        x = self.conv5(x4)   #2,256,128
+
+        x0 = x
 
         x1 = F.adaptive_max_pool1d(x, 1).view(batch_size, -1)
         x2 = F.adaptive_avg_pool1d(x, 1).view(batch_size, -1)
         x = torch.cat((x1, x2), 1)
 
-        inv_feat = self.inv_head(x)
-        return inv_feat, x
+        inv_feat = self.inv_head(x)  #使用反向头生成对比学习特征，弃用全局池化
+        return  x0, inv_feat
 
 class DGCNN3(nn.Module):
-    def __init__(self, args):
+    def __init__(self):
         super(DGCNN3, self).__init__()
         self.k = args.k
         self.emb_dims = args.emb_dims
@@ -427,10 +429,13 @@ class DGCNN3(nn.Module):
 if __name__ == '__main__':
 
 
-    x = torch.randn(1, 3, 2048).cuda()
-    model = DGCNN().cuda()
-    out = model(x)
+    x = torch.randn(2, 3, 2048).cuda()
+    model = DGCNN2().cuda()
+    out1,out2 = model(x)
     #out:torch.size([1,256,128])
-    print('dgcnnout:', out.shape) 
+
+    #DGCNN1: 2,256,128    2,256
+    #DGCNN2: 2,256,128   2,256
+    print('dgcnnout:', out1.shape) 
                     
    
