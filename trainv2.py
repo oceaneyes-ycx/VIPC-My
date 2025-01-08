@@ -101,10 +101,12 @@ def train_net(cfg):
         model.train()
 
         total_cd_pc=0 #L1 CD loss
+        total_contra = 0 #对比学习损失
+        total_loss = 0 #总损失
         contra_loss = AverageMeter2() #对比学习总损失
         train_intra_loss = AverageMeter2()
         train_cross_loss = AverageMeter2()
-        total_loss=0 #总损失
+        
 
         n_batches = len(train_loader)#获取训练数据加载器的长度
         print('epoch:',epoch,'optimizer: ',optimizer.param_groups[0]['lr'])
@@ -133,7 +135,7 @@ def train_net(cfg):
                 #计算对比学习损失
                 batch_size = png.size(0)
                 data = torch.cat((pc_1, pc_2))
-                _ , point_feats = point_model(data, data.transpose(1, 2).contiguous())
+                _ , point_feats = point_model(data.transpose(1, 2).contiguous())
 
                 point_t1_feats = point_feats[:batch_size, :]
                 point_t2_feats = point_feats[batch_size:, :]
@@ -146,9 +148,9 @@ def train_net(cfg):
 
                 loss_cross = criterion(img_rgb_feat, point_feats_combined) #模态间损失
 
-                contra_loss = loss_intra + loss_cross #对比学习总损失
+                loss_contra = loss_intra + loss_cross #对比学习总损失
 
-                loss_total = cd + 0.15*contra_loss #总损失
+                loss_total = cd + 0.15*loss_contra #总损失
 
 
                 optimizer.zero_grad()
@@ -157,15 +159,64 @@ def train_net(cfg):
 
 
                 cd_pc_item=cd.item()*1e3    #CD损失扩大化，用于更好显示
-                total_cd_pc+=cd_pc_item
-                contra_item=contra_loss.item()*1e1
+                total_cd_pc+=cd_pc_item   #累加CD损失
+                contra_item=0.15*loss_contra.item()*1e3
+                total_contra+=contra_item
+                total_loss+=loss_total.item()*1e3
+
+
+                t.set_description(f"[Epoch {epoch}/{cfg.TRAIN.N_EPOCHS}] Batch {batch_idex+1}/{len(train_loader)}")
+                t.set_postfix(cd_loss=loss_total.item(),contra_loss=loss_contra.item())
+        
+        #计算平均CD损失
+        avg_cdc=total_cd_pc/n_batches #平均L1 CD损失
+        avg_contra=total_contra/n_batches #平均对比学习损失
+        wandb.log({"Train/CD_Loss":avg_cdc,"Train/Contra_loss":avg_contra, "Epoch": epoch, "Learning_Rate": optimizer.param_groups[0]['lr']}) #记录到WandB
+
+        avg_loss = total_loss / n_batches #平均总损失
+        wandb.log({"Train/Total_Loss":avg_loss, "Epoch": epoch, "Learning_Rate": optimizer.param_groups[0]['lr'],
+                    "Learning_Rate": optimizer.param_groups[0]['lr'],
+                    "Grad_Norm": torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)})
+        
+        lr_scheduler.step() #学习率调度器更新
+
+        print('epoch:',epoch,'cd_pc:',avg_cdc,'contra:',avg_contra,'loss:',avg_loss) #打印训练信息
+
+
+
+        #开始测试
+        cd_eval=test_net(cfg,epoch,test_loader,model=model)
+
+        wandb.log({"Val/CD_Loss": cd_eval, "Epoch": epoch}) #记录到WandB
+        # Save checkpoints
+        if epoch % cfg.TRAIN.SAVE_FREQ == 0 or cd_eval < best_metrics:
+            if cd_eval < best_metrics:
+                best_metrics = cd_eval
+                best_epoch = epoch
+                file_name = 'ckpt-best.pth'
+
+            else:
+                file_name = 'ckpt-epoch-%03d.pth' % epoch
+            output_path = os.path.join(cfg.DIR.CHECKPOINTS, file_name)
+            torch.save({
+                'model': model.state_dict(),
+                'optimizer': optimizer.state_dict()
+            }, output_path)
+
+            logging.info('Saved checkpoint to %s ...' % output_path)
+
+    logging.info(f"Training complete. Best performance at epoch {best_epoch} with CD loss {best_metrics:.4f}")
+    wandb.finish()     #结束WandB
 
                 
 
 
 
 
-
+if __name__ == "__main__":
+    import config_vipc
+    cfg = config_vipc.cfg
+    train_net(cfg)
 
                 
 

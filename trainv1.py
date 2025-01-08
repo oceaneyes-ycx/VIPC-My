@@ -202,7 +202,8 @@ def train_net(cfg):
         #遍历每个epoch
         model.train()
 
-        total_cd_pc=0 #L1 CD loss
+        total_cd_pc= 0 #L1 CD loss
+        
 
         total_loss = 0 #总损失
 
