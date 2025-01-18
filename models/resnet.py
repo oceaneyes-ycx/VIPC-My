@@ -33,11 +33,11 @@ class ResNet2(nn.Module):
     #resnet2 版本，使用xmnet的方式输出了空间特征，同时修订了全局特征的提取方式
     #采用了crossnet的逆向特征头的方式，此类调用时只可以使用resnet18,同时feat_dim设定为512!
     def __init__(self, model, feat_dim = 2048, type = None):
-        super(ResNet2, self).__init__()
+        super().__init__()
         
         # 修改第一层卷积以适应灰度图像
-        if type == 'gray':
-            model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        #if type == 'gray':
+            #model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
         
         # 保留所有层以获取全局特征
         self.resnet = model
