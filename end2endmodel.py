@@ -14,7 +14,7 @@ import time
 import numpy as np
 from datetime import datetime, timedelta
 from decoder.dec_net import Decoder_Network
-from encoder_dgcnn.dgcnn import DGCNN, DGCNN2
+from encoder_dgcnn.dgcnn import DGCNN, DGCNN2, DGCNN3
 
 import torchvision.transforms as transforms
 from models.resnet import ResNet, ResNet2
@@ -70,7 +70,7 @@ class End2endNetwork(nn.Module):
     def __init__(self):
         super(End2endNetwork, self).__init__()
 
-        self.img_model = ResNet2(resnet18(), feat_dim = 512)
+        self.img_model = ResNet2(resnet18(pretrained=False), feat_dim = 512)
         self.point_model = DGCNN2()
         #特征融合模块
         #使用注意力层融合两种模态的信息

@@ -37,7 +37,7 @@ loss_cd_eval=L2_ChamferEval()#评估损失函数
 def train_net(cfg):
 
     # 初始化WandB
-    wandb.init(project="ViPC-Training-V2", config=cfg, name=f"{cfg.TRAIN.CATE}_{datetime.now().strftime('%y-%m-%d-%H-%M-%S')}")
+    wandb.init(project="ViPC-Training-V2-2", config=cfg, name=f"{cfg.TRAIN.CATE}_{datetime.now().strftime('%y-%m-%d-%H-%M-%S')}")
 
     #设置cuDNN的benchmark模式为True，以加速卷积操作
     torch.backends.cudnn.benchmark = True
