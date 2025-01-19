@@ -19,7 +19,7 @@ import torchvision.transforms as transforms
 from models.resnet import ResNet, ResNet2
 from torchvision.models import resnet50, resnet18, resnet101
 
-from config import params
+from config_xmf import params
 
 p = params()
 

@@ -1,6 +1,6 @@
 '''
 V2版本, 修改为端到端的方式进行训练。
-V2-0版本，去除了对比学习的部分
+V2-0版本，去除了对比学习的部分,为XMFNET的复现
 '''
 
 import torch
@@ -26,7 +26,7 @@ import os
 import numpy as np
 from PIL import Image
 
-from end2endmodel import End2endNetwork
+from xmfnet import Network
 from lightly.loss.ntx_ent_loss import NTXentLoss
 
 from utils.average_meter import AverageMeter, AverageMeter2
@@ -70,9 +70,9 @@ def train_net(cfg):
     
 
     #创建模型
-    model = End2endNetwork().cuda()
-    point_model=model.point_model
-    img_model=model.img_model
+    model = Network().cuda()
+    point_model=model.pc_encoder
+    img_model=model.im_encoder
 
     # Create the optimizers
     # 定义优化器，使用Adam优化算法
@@ -94,7 +94,7 @@ def train_net(cfg):
     best_epoch = 0
 
     # 对比学习损失函数
-    criterion = NTXentLoss(temperature=0.1).cuda()    
+    #criterion = NTXentLoss(temperature=0.1).cuda()    
 
     #开始训练
     for epoch in range(init_epoch+1, cfg.TRAIN.N_EPOCHS + 1):
@@ -104,26 +104,27 @@ def train_net(cfg):
         total_cd_pc=0 #L1 CD loss
         total_contra = 0 #对比学习损失
         total_loss = 0 #总损失
-        contra_loss = AverageMeter2() #对比学习总损失
-        train_intra_loss = AverageMeter2()
-        train_cross_loss = AverageMeter2()
+        #contra_loss = AverageMeter2() #对比学习总损失
+        #train_intra_loss = AverageMeter2()
+        #train_cross_loss = AverageMeter2()
         
 
         n_batches = len(train_loader)#获取训练数据加载器的长度
         print('epoch:',epoch,'optimizer: ',optimizer.param_groups[0]['lr'])
         with tqdm(train_loader) as t:
             #视图，GT 点云, 部分点云, 对比学习的1号点云，对比学习的2号点云
-            for batch_idex, (view,gt_pc,part_pc,pc1,pc2) in enumerate(t):
+            for batch_idex, (view,gt_pc,part_pc, _ , _) in enumerate(t):
                 partial=part_pc.cuda()
                 gt=gt_pc.cuda()
                 png=view.cuda()
-                pc_1=pc1.cuda()
-                pc_2=pc2.cuda()
+                #pc_1=pc1.cuda()
+                #pc_2=pc2.cuda()
 
                 #对部分点云和GT点云进行FPS采样
-                partial=farthest_point_sample(partial,2048)
-                gt=farthest_point_sample(gt,2048)
+                partial=farthest_point_sample(partial,2048)#(4,2048,3)
+                gt=farthest_point_sample(gt,2048)#(4,2048,3)
 
+                partial = partial.permute(0, 2, 1)
                 #对比学习的点云进行FPS采样
                 #pc_1=farthest_point_sample(pc_1,2048)
                 #pc_2=farthest_point_sample(pc_2,2048)
@@ -143,7 +144,7 @@ def train_net(cfg):
 
                 #loss_intra = criterion(point_t1_feats, point_t2_feats) #模态内损失
 
-                _ ,img_rgb_feat= img_model(png)
+                #_ ,img_rgb_feat= img_model(png)
 
                 #point_feats_combined = torch.stack([point_t1_feats, point_t2_feats]).mean(dim=0)
 

@@ -120,14 +120,14 @@ def train_net(cfg):
                 pc_2=pc2.cuda()
 
                 #对部分点云和GT点云进行FPS采样
-                partial=farthest_point_sample(partial,2048)
-                gt=farthest_point_sample(gt,2048)
+                partial=farthest_point_sample(partial,2048)#(4,2048,3)
+                gt=farthest_point_sample(gt,2048)#(4,2048,3)
 
                 #对比学习的点云进行FPS采样
                 pc_1=farthest_point_sample(pc_1,2048)
                 pc_2=farthest_point_sample(pc_2,2048)
 
-                complete=model(partial,png)   #输出补全的点云
+                complete=model(partial,png)   #输出补全的点云   (4,2048,3)
 
                 #计算CD损失
                 cd=chamfer_sqrt(complete,gt) #计算L1 CD loss
