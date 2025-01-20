@@ -6,7 +6,7 @@ import os
 import numpy as np
 import open3d as o3d
 from PIL import Image
-from model import Network
+from model_pre import Network
 from decoder.utils.utils import farthest_point_sample
 
 # Ensure result directory exists

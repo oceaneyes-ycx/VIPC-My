@@ -6,7 +6,7 @@ V2-0版本，去除了对比学习的部分,为XMFNET的复现
 import torch
 import os
 import time
-from model import Network
+#from model import Network
 from decoder.utils.utils import *
 import wandb
 import argparse
@@ -135,7 +135,7 @@ def train_net(cfg):
                 cd=chamfer_sqrt(complete,gt) #计算L1 CD loss
 
                 #计算对比学习损失
-                batch_size = png.size(0)
+                #batch_size = png.size(0)
                 #data = torch.cat((pc_1, pc_2))
                # _ , point_feats = point_model(data.transpose(1, 2).contiguous())
 

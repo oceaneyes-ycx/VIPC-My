@@ -8,7 +8,7 @@
 import logging
 import torch
 from torch.utils.data import DataLoader
-from model import Network
+from model_pre import Network
 
 import wandb
 from tqdm import tqdm
@@ -81,7 +81,7 @@ def test_net(cfg, epoch_idx=-1, test_data_loader=None, test_writer=None, model=N
 
     # Testing loop  开始测试循环
     with tqdm(test_data_loader) as t:
-        for model_idx, (view, gt_pc, part_pc, _ , _ ) in enumerate(t):
+        for model_idx, (view, gt_pc, part_pc ) in enumerate(t):
 
             with torch.no_grad():#不需要计算梯度
 

@@ -153,6 +153,6 @@ if __name__ == '__main__':
    
     x_part = torch.randn(16, 2048,3).cuda()
     view = torch.randn(16, 3, 224, 224).cuda()
-    model = Network().cuda()
+    model = End2endNetwork().cuda()
     out = model(x_part, view)
     print(out.shape) 

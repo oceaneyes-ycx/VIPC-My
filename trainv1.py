@@ -7,7 +7,7 @@ Cross-Model 对比学习用于VIPC任务,使用预训练好的点云和图像编
 import torch
 import os
 import time
-from model import Network
+from model_pre import Network
 from decoder.utils.utils import *
 import wandb
 import argparse
