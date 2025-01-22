@@ -11,6 +11,7 @@ import pickle
 import random
 import math 
 from tqdm import tqdm
+import copy
 from datasets import data_utils as d_utils
 
 trans_pc_1 = transforms.Compose(
@@ -418,6 +419,7 @@ class ViPCDataLoader3(Dataset):
     #3号dataloader, 同时返回图像，GT点云和部分点云，经过数据增强的点云
     #DATALOADER，继承自torch.utils.data.Dataset
     #用于对比学习使用的自定义dataloader
+    #2025/1/20：经检查这个dataloarder代码有问题，输出的cd点云似乎不对，需要进一步检查
     def __init__(self,filepath,data_path,status,pc_input_num=3500, view_align=False, category='all'):
         #初始化函数
         #filepath:文件路径,trina_list.txt或者test_list.txt的路径
@@ -566,11 +568,12 @@ class ViPCDataLoader3(Dataset):
         pc_L_max = np.max(np.sqrt(np.sum(abs(pc ** 2), axis=-1)))
         pc = pc/pc_L_max
 
+        
         pc_part = pc_part-gt_mean
         pc_part = pc_part/pc_L_max
 
-        pc1=trans_pc_1(pc)#用于对比学习的1号点云，原GT点云经过随机处理
-        pc2=trans_pc_2(pc)#用于对比学习的2号点云
+        pc1=trans_pc_1(copy.deepcopy(pc))#用于对比学习的1号点云，原GT点云经过随机处理
+        pc2=trans_pc_2(copy.deepcopy(pc))#用于对比学习的2号点云
 
         # 返回：视图，GT点云，部分点云
         #return views.float(), torch.from_numpy(pc).float(), torch.from_numpy(pc_part).float()

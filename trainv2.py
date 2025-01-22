@@ -37,46 +37,6 @@ loss_cd_eval=L2_ChamferEval()#评估损失函数
 
 
 
-trans_pc_1 = transforms.Compose(
-            [
-                d_utils.PointcloudToTensor(),#将点云转化为Tensor
-                d_utils.PointcloudNormalize(),#归一化
-                d_utils.PointcloudScale(lo=0.5, hi=2, p=1),#缩放
-                d_utils.PointcloudRotate(),#随机旋转，增强旋转不变性
-                d_utils.PointcloudTranslate(0.5, p=1),#平移，增强空间偏移鲁棒性
-                d_utils.PointcloudJitter(p=1),#添加噪声
-                d_utils.PointcloudRandomInputDropout(p=1),#随机丢弃一些点，应对输入数据的缺失可能
-            ])
-    
-trans_pc_2 = transforms.Compose(
-            [
-                d_utils.PointcloudToTensor(),
-                d_utils.PointcloudNormalize(),
-                d_utils.PointcloudScale(lo=0.5, hi=2, p=1),
-                d_utils.PointcloudRotate(),
-                d_utils.PointcloudTranslate(0.5, p=1),
-                d_utils.PointcloudJitter(p=1),
-                d_utils.PointcloudRandomInputDropout(p=1),
-            ])
-
-trans_img_1 = transforms.Compose([transforms.Resize((224, 224)),
-                                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
-                                transforms.RandomHorizontalFlip(),
-                                transforms.ToTensor(),
-                                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225], inplace = True)])
-
-trans_img_2 = transforms.Compose([transforms.Grayscale(1),
-                                transforms.Resize((224, 224)),
-                                # transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
-                                transforms.RandomHorizontalFlip(),
-                                transforms.ToTensor(),
-                                transforms.Normalize(0.485, 0.229, inplace = True)])
-
-
-
-
-
-
 def train_net(cfg):
 
     # 初始化WandB
@@ -86,7 +46,7 @@ def train_net(cfg):
     torch.backends.cudnn.benchmark = True
 
     #创建ViPC训练数据加载器，使用自定义的ViPCDataLoader类
-    ViPC_train = ViPCDataLoader(r'./train_list.txt',
+    ViPC_train = ViPCDataLoader3(r'./train_list.txt',
                                  data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='train',
                                  view_align=False, category=cfg.TRAIN.CATE)        
 
@@ -99,7 +59,7 @@ def train_net(cfg):
                                   prefetch_factor=cfg.CONST.DATA_perfetch)
 
     #创建ViPC测试数据加载器
-    ViPC_test = ViPCDataLoader(r'./test_list.txt',
+    ViPC_test = ViPCDataLoader3(r'./test_list.txt',
                                 data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='test',
                                 view_align=False, category=cfg.TRAIN.CATE)
     #创建测试数据加载器
@@ -155,11 +115,9 @@ def train_net(cfg):
         print('epoch:',epoch,'optimizer: ',optimizer.param_groups[0]['lr'])
         with tqdm(train_loader) as t:
             #视图，GT 点云, 部分点云, 对比学习的1号点云，对比学习的2号点云
-            for batch_idex, (view,gt_pc,part_pc) in enumerate(t):
+            for batch_idex, (view,gt_pc,part_pc,pc1,pc2) in enumerate(t):
                 gt=gt_pc.cuda()
 
-                pc1=trans_pc_1(gt_pc.detach().numpy())
-                pc2=trans_pc_2(gt_pc.detach().numpy())
                 partial=part_pc.cuda()
                 
                 png=view.cuda()

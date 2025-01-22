@@ -67,6 +67,7 @@ trans_img_2 = transforms.Compose([transforms.Grayscale(1),
 p = params()
 
 class End2endNetwork(nn.Module):
+    #2025/01/20：模型复刻了XMFNet的全部功能，经测试没有问题
     def __init__(self):
         super(End2endNetwork, self).__init__()
 
