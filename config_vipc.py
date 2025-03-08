@@ -75,8 +75,28 @@ __C.PRETRAIN.CATE                                   = 'plane' #TODO:训练使用
 
 
 
+#P2C自监督
+__C.P2C                                          = edict()
+__C.P2C.LEARNING_RATE                            = 0.0001
+__C.P2C.WEIGHT_DECAY                             = 0.0001
+__C.P2C.BATCH_SIZE                               = 32
 
+__C.P2C.decay_steps                              = 60
+__C.P2C.lr_decay                                 = 0.9
+__C.P2C.lowest_decay                             = 0.02
+__C.P2C.max_epoch                                = 200
 
-
-
-
+#P2C MODEL
+__C.P2Cnet                                      = edict()
+__C.P2Cnet.num_group                            = 64
+__C.P2Cnet.group_size                           = 32                               
+__C.P2Cnet.mask_ratio                           = [10, 50, 4]
+__C.P2Cnet.feat_dim                             = 1024           
+__C.P2Cnet.n_points                             = 2048                   
+__C.P2Cnet.shape_recon_weight                   = 1000                  
+__C.P2Cnet.shape_matching_weight                = 1000              
+__C.P2Cnet.latent_weight                        = 100           
+__C.P2Cnet.nbr_ratio                            = 2.0               
+__C.P2Cnet.support                              = 24                   
+__C.P2Cnet.neighborhood_size                    = 32            
+__C.P2Cnet.manifold_weight                      = 0     

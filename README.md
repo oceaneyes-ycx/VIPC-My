@@ -26,6 +26,8 @@ This work is accepted by ECCV 2024. In comparison with previous methods that rel
 - einops
 - numpy=1.26.4
 - lightly
+- conda install -c fvcore -c iopath -c conda-forge fvcore iopath
+- conda install pytorch3d
 
 Install PointNet++ utils, Density-aware Chamfer Distance and Furthest Point Sampling.
 ```
