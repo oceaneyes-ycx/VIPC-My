@@ -37,6 +37,8 @@ from P2C.P2C import Encoder, Decoder,P2C
 loss_cd=L2_ChamferLoss()#训练损失函数
 loss_cd_eval=L1_ChamferEval()#评估损失函数
 
+from utils.misc import *
+
 
 def train_net(cfg):
 
@@ -70,12 +72,13 @@ def train_net(cfg):
     model=P2C(cfg).cuda()
 
 
-    optimizer = 
+    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=cfg.P2C.lr, weight_decay=cfg.P2C.weight_decay)
     
 
-    scheduler_steplr=
+    scheduler_steplr=MultiStepLR(optimizer,milestones=cfg.TRAIN.LR_DECAY_STEP, gamma=cfg.TRAIN.GAMMA)
 
-    lr_scheduler=
+    lr_scheduler=GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=cfg.TRAIN.WARMUP_STEPS,
+                                          after_scheduler=scheduler_steplr)
 
     init_epoch = 0  #初始化训练epoch为0
     best_metrics = float('inf')#初始化最佳指标为无穷大
@@ -84,6 +87,12 @@ def train_net(cfg):
 
     for epoch in range(init_epoch+1, cfg.P2C.max_epoch + 1):
         model.train()
+        total_loss = AverageMeter2()
+        ShapeReconLoss = AverageMeter2()
+        ShapeCompletionLoss = AverageMeter2()
+        LatentLoss = AverageMeter2()
+        NCCLoss = AverageMeter2()
+
 
 
 

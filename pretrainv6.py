@@ -27,7 +27,7 @@ import wandb
 from lightly.loss.ntx_ent_loss import NTXentLoss
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from utils.ViPCdataloader import ViPCDataLoader2
+from utils.ViPCdataloader import ViPCDataLoader2,ViPCDataLoader3,ViPCDataLoader4
 from models.encoders import img_tokenizer,img_tokenizer2,pc_tokenizer,pc_tokenizer2
 from config_vipc import cfg
 import torch.optim as optim
@@ -50,7 +50,7 @@ def train(cfg):
     torch.backends.cudnn.benchmark = True
 
     # 加载数据集
-    ViPC_train = ViPCDataLoader2(
+    ViPC_train = ViPCDataLoader4(
         r'/home/ycx/code/VIPC-My/train_list.txt',
         data_path=cfg.DATASETS.SHAPENET.VIPC_PATH,
         status='train',

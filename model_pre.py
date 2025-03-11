@@ -13,7 +13,7 @@ import time
 import numpy as np
 from datetime import datetime, timedelta
 from decoder.dec_net import Decoder_Network
-from encoder_dgcnn.dgcnn import DGCNN
+from encoder_dgcnn.dgcnn import DGCNN, DGCNN2
 
 import torchvision.transforms as transforms
 from models.resnet import ResNet, ResNet2
@@ -31,7 +31,7 @@ class Network(nn.Module):
         #加载预训练的编码器
         checkpoint = torch.load(pretrained_model_path)
         self.img_model = ResNet2(resnet18(), feat_dim = 512)
-        self.point_model = DGCNN()
+        self.point_model = DGCNN2()
 
         self.point_model.load_state_dict(checkpoint['point_model_state_dict'])
         self.img_model.load_state_dict(checkpoint['img_model_state_dict'])
