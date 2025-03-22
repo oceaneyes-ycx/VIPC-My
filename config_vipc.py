@@ -41,8 +41,8 @@ __C.NETWORK.shared_encoder.pc_h_hidden_dim       = 192
 # Train
 #
 __C.TRAIN                                        = edict()
-__C.TRAIN.BATCH_SIZE                             = 8 #TODO: 训练批次大小
-__C.TRAIN.N_EPOCHS                               = 120
+__C.TRAIN.BATCH_SIZE                             = 4 #TODO: 训练批次大小
+__C.TRAIN.N_EPOCHS                               = 300
 __C.TRAIN.SAVE_FREQ                              = 40
 __C.TRAIN.LEARNING_RATE                          = 0.001
 __C.TRAIN.LR_MILESTONES                          = [16,32,48,64,80,96,112,128,144]
@@ -80,11 +80,13 @@ __C.P2C                                          = edict()
 __C.P2C.LEARNING_RATE                            = 0.0001
 __C.P2C.WEIGHT_DECAY                             = 0.0001
 __C.P2C.BATCH_SIZE                               = 32
+__C.P2C.CATE                                     = 'plane'  
 
 __C.P2C.decay_steps                              = 60
 __C.P2C.lr_decay                                 = 0.9
 __C.P2C.lowest_decay                             = 0.02
 __C.P2C.max_epoch                                = 200
+__C.P2C.SAVE_FREQ                                = 40
 
 #P2C MODEL
 __C.P2Cnet                                      = edict()

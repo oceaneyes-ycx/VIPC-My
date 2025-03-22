@@ -531,7 +531,8 @@ class transfer_loss_shared_encoder(nn.Module):
         x, _ = self.cross_layer(pc_f, im_f, pc_f)#跨模态注意力机制
         pc_f=self.cross_norm(pc_f+x)#跨模态注意力机制归一化
 
-        if self.fuse_layer_num==0:  #不进行风格迁移
+        #计算风格迁移损失
+        if self.fuse_layer_num==0:  #如果融合层数为0
             im_target_gram = gram_matrix(im_f_list[-1])
             pc_target_gram = gram_matrix(pc_f_list[-1])
             style_transfer_loss = torch.mean((im_target_gram - pc_target_gram) ** 2) / (self.embed_dim*256)

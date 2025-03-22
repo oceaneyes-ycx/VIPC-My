@@ -29,6 +29,18 @@ This work is accepted by ECCV 2024. In comparison with previous methods that rel
 - conda install -c fvcore -c iopath -c conda-forge fvcore iopath
 - conda install pytorch3d
 
+git clone https://github.com/kaiyizhang/AXform
+
+cd AXform/util/rand……
+
+git submodule update --init --recursive
+
+sudo apt-get install libpcl-dev
+
+python setup.py install
+
+
+
 Install PointNet++ utils, Density-aware Chamfer Distance and Furthest Point Sampling.
 ```
 cd /models/pointnet2_batch

@@ -1,0 +1,6 @@
+# ninja log v5
+1	16755	1741956744989055834	/home/ycx/code/VIPC-My/extensions/pointops/build/temp.linux-x86_64-cpython-39/src/sampling/sampling_cuda.o	1704dd8227f8e557
+0	16773	1741956744999056024	/home/ycx/code/VIPC-My/extensions/pointops/build/temp.linux-x86_64-cpython-39/src/knnquery/knnquery_cuda.o	efffc5642d1d226b
+1	33056	1741956761269365886	/home/ycx/code/VIPC-My/extensions/pointops/build/temp.linux-x86_64-cpython-39/src/pointops_api.o	41678cbfd2fe7ac9
+0	33204	1741956761439369124	/home/ycx/code/VIPC-My/extensions/pointops/build/temp.linux-x86_64-cpython-39/src/knnquery/knnquery_cuda_kernel.o	739bbacf76422f0f
+1	33354	1741956761589371977	/home/ycx/code/VIPC-My/extensions/pointops/build/temp.linux-x86_64-cpython-39/src/sampling/sampling_cuda_kernel.o	f45b78a1e6d19c08

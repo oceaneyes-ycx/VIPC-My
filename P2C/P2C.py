@@ -119,12 +119,12 @@ class P2C(nn.Module):
         super().__init__() 
         # define parameters
         self.config = config
-        self.num_group = config.num_group#分组数
-        self.group_size = config.group_size#每组点数
-        self.mask_ratio = config.mask_ratio#分组比例
-        self.feat_dim = config.feat_dim#特征维度
-        self.n_points = config.n_points#输出点数
-        self.nbr_ratio = config.nbr_ratio#邻域比例
+        self.num_group = config.P2Cnet.num_group#分组数
+        self.group_size = config.P2Cnet.group_size#每组点数
+        self.mask_ratio = config.P2Cnet.mask_ratio#分组比例
+        self.feat_dim = config.P2Cnet.feat_dim#特征维度
+        self.n_points = config.P2Cnet.n_points#输出点数
+        self.nbr_ratio = config.P2Cnet.nbr_ratio#邻域比例
 
         self.group_divider = Group(num_group = self.num_group, group_size = self.group_size)
         #分组器
@@ -157,15 +157,15 @@ class P2C(nn.Module):
         self.shape_criterion = ChamferDistanceL1()#cdL1损失
         self.latent_criterion = nn.SmoothL1Loss(reduction='mean')
         #潜在空间重建损失
-        self.manifold_constraint = ManifoldnessConstraint(support=config.support, neighborhood_size=config.neighborhood_size)
+        self.manifold_constraint = ManifoldnessConstraint(support=config.P2Cnet.support, neighborhood_size=config.P2Cnet.neighborhood_size)
         #法向一致性约束
-        self.shape_matching_weight = config.shape_matching_weight
+        self.shape_matching_weight = config.P2Cnet.shape_matching_weight
         #形状匹配权重
-        self.shape_recon_weight = config.shape_recon_weight
+        self.shape_recon_weight = config.P2Cnet.shape_recon_weight
         #形状重建权重
-        self.latent_weight = config.latent_weight
+        self.latent_weight = config.P2Cnet.latent_weight
         #潜在空间权重
-        self.manifold_weight = config.manifold_weight
+        self.manifold_weight = config.P2Cnet.manifold_weight
         #法向一致性权重
 
     def _group_points(self, nbrs, center, B, G):
