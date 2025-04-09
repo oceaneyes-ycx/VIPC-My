@@ -56,6 +56,10 @@ cd ../../utils/furthestPointSampling/
 python setup.py install
 ```
 
+pip install git+'https://github.com/otaheri/chamfer_distance'(需要pytorch3D)
+
+
+
 The code has been trained and tested with Python 3.9, PyTorch 2.1.2 and CUDA 11.8 on Ubuntu 20.04 and RTX 3080Ti.
 
 ### Dataset

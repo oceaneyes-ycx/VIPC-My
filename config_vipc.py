@@ -41,12 +41,14 @@ __C.NETWORK.shared_encoder.pc_h_hidden_dim       = 192
 # Train
 #
 __C.TRAIN                                        = edict()
-__C.TRAIN.BATCH_SIZE                             = 4 #TODO: 训练批次大小
+__C.TRAIN.BATCH_SIZE                             = 16 #TODO: 训练批次大小
 __C.TRAIN.N_EPOCHS                               = 300
 __C.TRAIN.SAVE_FREQ                              = 40
-__C.TRAIN.LEARNING_RATE                          = 0.001
-__C.TRAIN.LR_MILESTONES                          = [16,32,48,64,80,96,112,128,144]
-__C.TRAIN.LR_DECAY_STEP                          = [16,32,48,64,80,96,112,128,144]
+__C.TRAIN.LEARNING_RATE                          = 0.0001
+__C.TRAIN.LR_MILESTONES                          = [30,60,90,120,150,180,210,240,270]
+                                                    #[16,32,48,64,80,96,112,128,144]
+__C.TRAIN.LR_DECAY_STEP                          = [30,60,90,120,150,180,210,240,270] 
+                                                #[16,32,48,64,80,96,112,128,144]
 __C.TRAIN.WARMUP_STEPS                           = 1
 __C.TRAIN.GAMMA                                  = 0.7
 __C.TRAIN.BETAS                                  = (.9, .999)

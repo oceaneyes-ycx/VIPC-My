@@ -70,6 +70,7 @@ p = params()
 
 class End2endNetwork(nn.Module):
     #2025/01/20：模型复刻了XMFNet的全部功能，经测试没有问题
+    #需要注意输入的点云维度应该为(B,N,3)，而不是(B,3,N)，我在这里进行了一定的修改
     def __init__(self):
         super(End2endNetwork, self).__init__()
 

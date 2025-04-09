@@ -16,6 +16,8 @@ from datasets import data_utils as d_utils
 
 import randpartial
 
+from utils.loss_utils import *
+
 trans_pc_1 = transforms.Compose(
             [
                 d_utils.PointcloudToTensor(),#将点云转化为Tensor
@@ -1091,6 +1093,7 @@ class ViPCDataLoader6(Dataset):
         except:
             pc_partpart=randpartial.gen(pc_part)
 
+
         # 返回：视图，GT点云，部分点云,部分点云的部分点云
         return views.float(), torch.from_numpy(pc).float(), torch.from_numpy(pc_part).float(), torch.from_numpy(pc_partpart).float()
 
@@ -1098,11 +1101,172 @@ class ViPCDataLoader6(Dataset):
         return len(self.key)
 
 
+class ViPCDataLoader_ft(Dataset):
+    #渲染所使用的dataloader
+    def __init__(self,filepath,data_path,status,pc_input_num=3500, view_align=False, category='all'):
+        super(ViPCDataLoader_ft,self).__init__()
+        self.pc_input_num = pc_input_num
+        self.status = status
+        self.filelist = []
+        self.cat = []
+        self.key = []
+        self.category = category
+        self.view_align = view_align
+        self.cat_map = {
+            'plane':'02691156',
+            'bench': '02828884',  
+            'cabinet':'02933112', 
+            'car':'02958343',
+            'chair':'03001627',
+            'monitor': '03211117', 
+            'lamp':'03636649',
+            'speaker': '03691459', 
+            'firearm': '04090263', 
+            'couch':'04256520',
+            'table':'04379243',
+            'cellphone': '04401088',
+            'watercraft':'04530566'
+        }
+        with open(filepath,'r') as f:
+            line = f.readline()
+            while (line):
+                self.filelist.append(line)
+                line = f.readline()
+        
+        self.imcomplete_path = os.path.join(data_path,'ShapeNetViPC-Partial')
+        #部分点云路径
+        self.gt_path = os.path.join(data_path,'ShapeNetViPC-GT')
+        #GT点云路径
+        self.rendering_path = os.path.join(data_path,'ShapeNetViPC-View')
+        #2d视图路径
+        self.partpart_path = os.path.join(data_path, 'ShapeNetViPC-PartPart')
+        #部分部分点云路径
+
+        for key in self.filelist:
+            if category !='all':
+                if key.split('/')[0]!= self.cat_map[category]:
+                    continue
+            self.cat.append(key.split(';')[0])
+            self.key.append(key)
+
+        self.transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.ToTensor()
+        ])
+
+        print(f'{status} data num: {len(self.key)}')
+
+
+    def __getitem__(self, idx):
+        #获取数据集中的数据
+        
+        key = self.key[idx]
+       
+        pc_part_path = os.path.join(self.imcomplete_path,key.split('/')[0]+'/'+ key.split('/')[1]+'/'+key.split('/')[-1].replace('\n', '')+'.dat')
+        # view_align = True, means the view of image equal to the view of partial points
+        # view_align = False, means the view of image is different from the view of partial points
+        if self.view_align:
+            ran_key = key        
+        else:
+            ran_key = key[:-3]+str(random.randint(0,23)).rjust(2,'0')
+        
+       
+        pc_path = os.path.join(self.gt_path, ran_key.split('/')[0]+'/'+ ran_key.split('/')[1]+'/'+ran_key.split('/')[-1].replace('\n', '')+'.dat')
+        #GT点云路径
+        view_path = os.path.join(self.rendering_path,ran_key.split('/')[0]+'/'+ran_key.split('/')[1]+'/rendering/'+ran_key.split('/')[-1].replace('\n','')+'.png')
+        #2d视图路径
+        part_part_path = os.path.join(self.partpart_path,ran_key.split('/')[0]+'/'+ran_key.split('/')[1]+'/'+ran_key.split('/')[-1].replace('\n','')+'.npy')
+        #部分部分点云路径
+
+        part_part_folder = os.path.join(self.partpart_path,ran_key.split('/')[0]+'/'+ran_key.split('/')[1])
+        #Inserted to correct a bug in the splitting for some lines 
+        if(len(ran_key.split('/')[-1])>3):
+            print("bug")
+            print(ran_key.split('/')[-1])
+            fin = ran_key.split('/')[-1][-2:]
+            interm = ran_key.split('/')[-1][:-2]
+            print(interm)
+            pc_path = os.path.join(self.gt_path, ran_key.split('/')[0]+'/'+ interm +'/'+ fin.replace('\n', '')+'.dat')
+            view_path = os.path.join(self.rendering_path,ran_key.split('/')[0]+ '/' + interm + '/rendering/' + fin.replace('\n','')+'.png')
+
+
+        
+        views = self.transform(Image.open(view_path))
+        #对2d视图进行变换，resize并转换为tensor
+       
+        views = views[:3,:,:]#取前3个通道，即RGB通道
+        views_t_p = views.permute(1,2,0)#将tensor的维度进行转换，(h,w,3)
+        views_t_p = views_t_p.numpy()#tensor转numpy
+        mask = torch.from_numpy((views_t_p[..., :3].max(-1) != 0).astype(np.float32))
+        #.max(-1)代表对最后一个维度（RGB）进行最大值操作，返回一个新的数组
+        #!=0生成一个bool掩码，表示哪些像素点不是全黑[0,0,0]
+        #mask的shape为(h,w)，值为0或1，表示该像素点是否是黑色
+        #实际上就是一个图片的mask
+        
+        
+        # load partial points
+        with open(pc_path,'rb') as f:
+            pc = pickle.load(f).astype(np.float32)
+            #加载GT点云，转换为numpy float32数组
+        with open(pc_part_path,'rb') as f:
+            pc_part = pickle.load(f).astype(np.float32)
+            #加载部分点云，转换为numpy float32数组
+        # increase some item point number less than 3500 
+        if pc_part.shape[0]<self.pc_input_num:
+            #如果部分点云的点数小于3500，进行重复插值
+            pc_part = np.repeat(pc_part,(self.pc_input_num//pc_part.shape[0])+1,axis=0)[0:self.pc_input_num]
+
+
+        
+        # load the view metadata
+        #加载视图元数据
+        #获取视图的ID
+        image_view_id = view_path.split('.')[0].split('/')[-1]
+        part_view_id = pc_part_path.split('.')[0].split('/')[-1]
+        
+        view_metadata = np.loadtxt(view_path[:-6]+'rendering_metadata.txt')
+        #获取视图的元数据,txt文件中存储的视图的角度信息（即位姿信息）
+        
+        cam_eye = np.loadtxt(view_path[:-6]+'camera_calibration.txt', delimiter='/')
+        #获取相机内参  
+
+        theta_part = math.radians(view_metadata[int(part_view_id),0])
+        #部分点云的角度信息转换为弧度
+        phi_part = math.radians(view_metadata[int(part_view_id),1])
+
+        theta_img = math.radians(view_metadata[int(image_view_id),0])
+        phi_img = math.radians(view_metadata[int(image_view_id),1])
+
+        pc_part = rotation_y(rotation_x(pc_part, - phi_part),np.pi + theta_part)
+        #旋转部分点云，使其与视图对齐
+        pc_part = rotation_x(rotation_y(pc_part, np.pi - theta_img), phi_img)
+
+        # normalize partial point cloud and GT to the same scale
+        #将部分点云和GT点云进行归一化处理，归一化到相同的尺度
+        gt_mean = pc.mean(axis=0) 
+        pc = pc -gt_mean
+        pc_L_max = np.max(np.sqrt(np.sum(abs(pc ** 2), axis=-1)))
+        pc = pc/pc_L_max
+
+        pc_part = pc_part-gt_mean
+        pc_part = pc_part/pc_L_max
+        
+        #部分点云的部分点云，当存在的时候直接加载，不存在的时候选择使用FPS采样的方法
+        try:
+            with open(part_part_path,'rb') as f:
+                pc_partpart = np.load(f)
+        except:
+            pc_partpart = farthest_point_sample(torch.from_numpy(pc_part).float(), 2048)
+
+        #返回，2d视图，完整点云，部分点云，相机坐标，图像掩码，部分点云的部分点云    
+        return views.float(), torch.from_numpy(pc).float(), torch.from_numpy(pc_part).float(), torch.from_numpy(cam_eye).float(), mask, torch.from_numpy(pc_partpart).float()
+
+    def __len__(self):
+        return len(self.key)
 
 
 
-
-
+'''
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
     category = "table"
@@ -1125,5 +1289,23 @@ if __name__ == "__main__":
         print(image.shape)
         print(pc1.shape)
         print(pc2.shape)
+        pass
+'''
+
+if __name__ == "__main__":
+    from torch.utils.data import DataLoader
+   
+    ViPCDataset = ViPCDataLoader6(r'./train_list.txt',data_path='/home/ycx/dataset/ShapeNetViPC/ShapeNetViPC-Dataset',status='test', view_align=True, category = 'plane')
+    train_loader = DataLoader(ViPCDataset,
+                              batch_size=1,
+                              num_workers=0,
+                              shuffle=True,
+                              drop_last=True)
+    
+    
+
+
+    for image, gt, partial, partpart in tqdm(train_loader):
+        
         pass
     

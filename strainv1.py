@@ -1,7 +1,8 @@
 '''
 自监督训练代码
 采用XMFNET的自监督设计
-暂时不使用他的render_loss
+
+2025/04/04  该代码已经完成对于XMFNet的自监督部分的复刻
 '''
 
 import torch
@@ -13,7 +14,7 @@ import wandb
 import argparse
 import logging
 from torch.utils.data import DataLoader
-from utils.ViPCdataloader import ViPCDataLoader, ViPCDataLoader3,ViPCDataLoader6
+from utils.ViPCdataloader import ViPCDataLoader, ViPCDataLoader3,ViPCDataLoader6,ViPCDataLoader_ft
 from utils.average_meter import AverageMeter
 from utils.loss_utils import *
 from utils.schedular import GradualWarmupScheduler
@@ -33,7 +34,12 @@ from lightly.loss.ntx_ent_loss import NTXentLoss
 from utils.average_meter import AverageMeter, AverageMeter2
 from torchvision import transforms
 from datasets import data_utils as d_utils
-from UTIL import mix_shapes_2
+from UTIL import mix_shapes_2,calc_cd,calc_dcd
+
+from renderer import Renderer
+
+import matplotlib.pyplot as plt
+import torch.nn.functional as F
 
 #loss_cd=L1_ChamferLoss()#训练损失函数
 #loss_cd_eval=L2_ChamferEval()#评估损失函数
@@ -49,7 +55,7 @@ def train_net(cfg):
     torch.backends.cudnn.benchmark = True
 
     #创建ViPC训练数据加载器，使用自定义的ViPCDataLoader类
-    ViPC_train = ViPCDataLoader6(r'./train_list.txt',
+    ViPC_train = ViPCDataLoader_ft(r'./train_list_clean_plane2.txt',
                                  data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='train',
                                  view_align=False, category=cfg.TRAIN.CATE)        
 
@@ -75,9 +81,16 @@ def train_net(cfg):
     
 
     #创建模型
-    model = XMFnet().cuda()
+    model = End2endNetwork().apply(weights_init_normal) #创建模型
+    model=model.cuda()
     #point_model=model.point_model
     #img_model=model.img_model
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    #渲染器相关
+    colors=colors = torch.ones(size=(cfg.TRAIN.BATCH_SIZE, 2048, 1)).to(device)
+    colors[:, :, 0] = colors[:, :, 0]*0.8
+    render = Renderer(colors).to(device)
 
     # Create the optimizers
     # 定义优化器，使用Adam优化算法
@@ -112,24 +125,28 @@ def train_net(cfg):
         #contra_loss = AverageMeter2() #对比学习总损失
         #train_intra_loss = AverageMeter2()
         #train_cross_loss = AverageMeter2()
+        total_render_loss=0 #渲染损失
         
 
         n_batches = len(train_loader)#获取训练数据加载器的长度
         print('epoch:',epoch,'optimizer: ',optimizer.param_groups[0]['lr'])
         with tqdm(train_loader) as t:
-            #视图，GT 点云, 部分点云, 对比学习的1号点云，对比学习的2号点云
-            for batch_idex, (view,gt_pc,part_pc,pc_partpart) in enumerate(t):
-                gt=gt_pc.cuda()
+            #2d视图，完整点云，部分点云，相机坐标，图像掩码，部分点云的部分点云
+            for batch_idex, (view,gt_pc,part_pc,eye,mask,pc_partpart) in enumerate(t):
+                gt=gt_pc.cuda()#GT点云
 
                 partial=part_pc.cuda() #部分点云
                 partpart=pc_partpart.cuda()#部分点云的部分点云
                 png=view.cuda()#2D图像
+                eye=eye.cuda()#相机坐标
+                mask_gt=mask.cuda()#图像掩码
 
 
 
                 #对部分点云和GT点云进行FPS采样
                 partial=farthest_point_sample(partial,2048)#(4,2048,3)
                 #gt=farthest_point_sample(gt,2048)#(4,2048,3)
+                partpart=farthest_point_sample(partpart,2048)#(4,2048,3)
                 partpart=partpart.permute(0,2,1) #(4,3,2048)
                 partial=partial.permute(0,2,1) #(4,3,2048)
 
@@ -150,10 +167,55 @@ def train_net(cfg):
                 #8,3,224,224 
                 #使用cat函数将混合后的点云的2D图像和2D图像拼接
                 
+                #2025/04/03  调试： 
+                #batch_input: tensor: (8,3,2048) batch_view: tensor: (8,3,224,224) batch_gt: tensor: (8,2048,3)
+
+                batch_input=batch_input.permute(0,2,1).contiguous() #调整维度为(8,2048,3)
                 complete=model(batch_input, batch_view)   #输出补全的点云   (4,2048,3)
-                # 8,2048,3
+                # complete: tensor:(8,2048,3) 
+
+                proj=render(complete[cfg.TRAIN.BATCH_SIZE:,...], eye)
+                #使用补全之后的完整的点云和相机的位置进行渲染
+                # #proj:渲染之后的图像  
+                proj = proj.permute(0,3,1,2).squeeze(1)
+                #调整维度并去掉第一个维度 
+
+                difference=np.abs(proj[0].detach().cpu().numpy() -  mask_gt[0].cpu().numpy())
+                #计算渲染图像和GT图像之间的差异
+
+                plt.imsave('difference.png', difference)#存储差异图像
+                plt.imsave('zao.png', proj[0].detach().cpu().numpy(), cmap = plt.get_cmap("binary"))
+                #存储渲染图像
+                plt.imsave('zao_GT.png', mask_gt[0].cpu().numpy(), cmap= plt.get_cmap("binary"))
+                #存储GT图像
+
+                H = np.array(np.mat('0.000009501, 0.000056320, 0.000215654, 0.000544067, 0.000929938, 0.001107336, 0.000929938, 0.000544067, 0.000215654, 0.000056320, 0.000009501; 0.000056320, 0.000313537, 0.001107336, 0.002543353, 0.003994979, 0.004589996, 0.003994979, 0.002543353, 0.001107336, 0.000313537, 0.000056320; 0.000215654, 0.001107336, 0.003454844, 0.006607893, 0.008327918, 0.008509345, 0.008327918, 0.006607893, 0.003454844, 0.001107336, 0.000215654; 0.000544067, 0.002543353, 0.006607893, 0.008265356, 0.002299816, -0.002872123, 0.002299816, 0.008265356, 0.006607893, 0.002543353, 0.000544067; 0.000929938, 0.003994979, 0.008327918, 0.002299816, -0.022397153, -0.039158923, -0.022397153, 0.002299816, 0.008327918, 0.003994979, 0.000929938; 0.001107336, 0.004589996, 0.008509345, -0.002872123, -0.039158923, -0.062876027, -0.039158923, -0.002872123, 0.008509345, 0.004589996, 0.001107336; 0.000929938, 0.003994979, 0.008327918, 0.002299816, -0.022397153, -0.039158923, -0.022397153, 0.002299816, 0.008327918, 0.003994979, 0.000929938; 0.000544067, 0.002543353, 0.006607893, 0.008265356, 0.002299816, -0.002872123, 0.002299816, 0.008265356, 0.006607893, 0.002543353, 0.000544067; 0.000215654, 0.001107336, 0.003454844, 0.006607893, 0.008327918, 0.008509345, 0.008327918, 0.006607893, 0.003454844, 0.001107336, 0.000215654; 0.000056320, 0.000313537, 0.001107336, 0.002543353, 0.003994979, 0.004589996, 0.003994979, 0.002543353, 0.001107336, 0.000313537, 0.000056320; 0.000009501, 0.000056320, 0.000215654, 0.000544067, 0.000929938, 0.001107336, 0.000929938, 0.000544067, 0.000215654, 0.000056320, 0.000009501'))
+                #一个二维高斯滤波器的卷积核
+
+                H = torch.from_numpy(H).to(device).unsqueeze(0).unsqueeze(0).float() 
+                #将numpy数组转换为torch张量，并添加两个维度
+                #使得H的形状从(11,11)变为(1,1,11,11)
+                #这样做是为了在卷积操作中使用，pytorch的卷积操作需要输入的张量有四个维度
+                #.float()将数据类型转换为float32，确保后续计算的精度一致
+
+                edge = F.conv2d(mask_gt.unsqueeze(1), H, padding='same').squeeze(1)  
+                #对GT图像进行卷积操作，得到边缘图
+
+                tau = 0.02  #边缘图的阈值，只有edge大于tau的部分才会被保留，即标记为边缘
+                edge_map = torch.where(edge>tau, 0.4, 1.0) 
+                #加权边缘图，边缘区域（edge>tau）被赋值为0.4，其他区域被赋值为1.0(原始权重)
+                #让模型更加关注物体内部区域而不是边缘区域的噪声
+                loss_img = torch.mean(((proj-mask_gt)*edge_map)**2)   
+                #渲染损失，通过计算渲染图像proj和真实掩码之间的均方误差来衡量
+                loss_pc, _ , _ =calc_dcd(complete, batch_gt)
+                #计算完成之后的点云和伪GT点云之间的DCD损失
+                loss_pc = loss_pc.mean()#损失求平均
+
+                loss_final=loss_pc + 0.10*loss_img #总损失
+
+
                 #计算CD损失
-                loss_total=chamfer_sqrt(complete,batch_gt) #计算L1 CD loss
+                #loss_total=chamfer_sqrt(complete,batch_gt) #计算L1 CD loss
 
                 #计算对比学习损失
                 #batch_size = png.size(0)
@@ -177,27 +239,30 @@ def train_net(cfg):
 
 
                 optimizer.zero_grad()
-                loss_total.backward()
+                loss_final.backward()
                 optimizer.step()
 
 
-                cd_pc_item=loss_total.item()*1e3    #CD损失扩大化，用于更好显示
+                cd_pc_item=loss_pc.item()*1e3    #损失扩大化，用于更好显示
+                render_item=0.10*loss_img.item()*1e3
                 total_cd_pc+=cd_pc_item   #累加CD损失
+                total_render_loss+=render_item
 
-                loss_item = loss_total.item() * 1e3
+                loss_item = loss_final.item() * 1e3
                 #total_loss += loss_item
                 #contra_item=0.15*loss_contra.item()*1e3
                 #total_contra+=contra_item
-                total_loss+=loss_total.item()*1e3
+                total_loss+=loss_final.item()*1e3
 
 
                 t.set_description(f"[Epoch {epoch}/{cfg.TRAIN.N_EPOCHS}] Batch {batch_idex+1}/{len(train_loader)}")
-                t.set_postfix(cd_loss=loss_total.item())
+                t.set_postfix(cd_pc=loss_pc.item(),render_loss=loss_img.item()) #打印训练信息
         
         #计算平均CD损失
         avg_cdc=total_cd_pc/n_batches #平均L1 CD损失
         #avg_contra=total_contra/n_batches #平均对比学习损失
-        wandb.log({"Train/CD_Loss":avg_cdc, "Epoch": epoch, "Learning_Rate": optimizer.param_groups[0]['lr']}) #记录到WandB
+        avg_render=total_render_loss/n_batches #平均渲染损失
+        wandb.log({"Train/CD_Loss":avg_cdc,"Train/Render_Loss":avg_render, "Epoch": epoch, "Learning_Rate": optimizer.param_groups[0]['lr']}) #记录到WandB
 
         avg_loss = total_loss / n_batches #平均总损失
         wandb.log({"Train/Total_Loss":avg_loss, "Epoch": epoch, "Learning_Rate": optimizer.param_groups[0]['lr'],
@@ -206,7 +271,7 @@ def train_net(cfg):
         
         lr_scheduler.step() #学习率调度器更新
 
-        print('epoch:',epoch,'cd_pc:',avg_cdc,'loss:',avg_loss) #打印训练信息
+        print('epoch:',epoch,'cd_pc:',avg_cdc,'render_loss:',avg_render ,'loss:',avg_loss) #打印训练信息
 
 
 
@@ -235,7 +300,19 @@ def train_net(cfg):
     wandb.finish()     #结束WandB
 
                 
-
+def weights_init_normal(m):
+    """ Weights initialization with normal distribution.. Xavier """
+    classname = m.__class__.__name__
+    if classname.find("Conv2d") != -1:
+        torch.nn.init.normal_(m.weight.data, 0.0, 0.02)
+    elif classname.find("Conv1d") != -1:
+        torch.nn.init.normal_(m.weight.data, 0.0, 0.02)
+    elif classname.find("BatchNorm2d") != -1:
+        torch.nn.init.normal_(m.weight.data, 1.0, 0.02)
+        torch.nn.init.constant_(m.bias.data, 0.0)
+    elif classname.find("BatchNorm1d") != -1:
+        torch.nn.init.normal_(m.weight.data, 1.0, 0.02)
+        torch.nn.init.constant_(m.bias.data, 0.0)
 
 
 
