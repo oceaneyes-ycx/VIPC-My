@@ -310,120 +310,128 @@ class DGCNN2(nn.Module):
                             )
 
     def forward(self, x): #x --> (B X F X N)
-        batch_size = x.size(0)
-        x = get_graph_feature(x, k=self.k)
-        x = self.conv1(x)
-        x1 = x.max(dim=-1, keepdim=False)[0]
 
-        x = get_graph_feature(x1, k=self.k)
-        x = self.conv2(x)
-        x2 = x.max(dim=-1, keepdim=False)[0]
+        #x为输入的点云：torch.size([B,3,2048])
+        batch_size = x.size(0)
+        x = get_graph_feature(x, k=self.k)  #图特征：torch.size([B,6,2048,20])  k=20
+        x = self.conv1(x) #卷积， B,64,2048,20
+        x1 = x.max(dim=-1, keepdim=False)[0]  #最大池化，x1: torch.size([B,64,2048]) 为第一次卷积后的特征
+
+        x = get_graph_feature(x1, k=self.k) #二次提取图特征  B,128,2048,20
+        x = self.conv2(x) #二次卷积，B，64，2048,20
+        x2 = x.max(dim=-1, keepdim=False)[0] #最大池化，x2: torch.size([B,64,2048])为第二次卷积后的特征
 
         # SAG Pool N ---> N/2
-        x = self.pool1(x2).permute(0, 2, 1)
+        x = self.pool1(x2).permute(0, 2, 1) #B，64，512
 
-        x = get_graph_feature(x, k=self.k)
-        x = self.conv3(x)
-        x3 = x.max(dim=-1, keepdim=False)[0]
+        x = get_graph_feature(x, k=self.k) # B,128,512,20
+        ############# 这里的x是经过池化后的特征，进行卷积操作
+        x = self.conv3(x) #B，128，512，20
+        x3 = x.max(dim=-1, keepdim=False)[0] # B，128，512
 
         # SAG Pool N/2 ---> N/4
-        x = self.pool2(x3).permute(0, 2, 1)
+        x = self.pool2(x3).permute(0, 2, 1) #B，128，128
 
-        x = get_graph_feature(x, k=self.k)
-        x = self.conv4(x)
-        x4 = x.max(dim=-1, keepdim=False)[0]
+        x = get_graph_feature(x, k=self.k) # B,256,128,20
+        x = self.conv4(x) #B，256，128，20
+        x4 = x.max(dim=-1, keepdim=False)[0]# B，256，128
 
         x = self.conv5(x4)   #2,256,128
 
-        x0 = x
+        x0 = x # torch.Size([B, 256, 128])，最后一次卷积后的特征,也是最终的局部特征
 
-        x1 = F.adaptive_max_pool1d(x, 1).view(batch_size, -1)
-        x2 = F.adaptive_avg_pool1d(x, 1).view(batch_size, -1)
-        x = torch.cat((x1, x2), 1)
+        x1 = F.adaptive_max_pool1d(x, 1).view(batch_size, -1) # B，256 
+        x2 = F.adaptive_avg_pool1d(x, 1).view(batch_size, -1) # B，256
+        x = torch.cat((x1, x2), 1) #B，512 
 
-        inv_feat = self.inv_head(x)  #使用反向头生成对比学习特征，弃用全局池化
-        return  x0, inv_feat
+        inv_feat = self.inv_head(x)  #使用反向头生成对比学习特征，弃用全局池化， B，256 全局特征
+        return  x0, inv_feat  #返回： 局部特征，全局特征
 
 class DGCNN3(nn.Module):
-    def __init__(self):
+    #P2C任务使用
+    def __init__(self,  output_channels=512):
         super(DGCNN3, self).__init__()
-        self.k = args.k
-        self.emb_dims = args.emb_dims
 
-        # 原始卷积模块
+        self.k = args.k
+        self.output_channels = args.emb_dims
         self.bn1 = nn.BatchNorm2d(64)
         self.bn2 = nn.BatchNorm2d(64)
         self.bn3 = nn.BatchNorm2d(128)
         self.bn4 = nn.BatchNorm2d(256)
-        self.bn5 = nn.BatchNorm1d(self.emb_dims)
+        self.bn5 = nn.BatchNorm1d(args.emb_dims)
 
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(6, 64, kernel_size=1, bias=False),
-            self.bn1,
-            nn.LeakyReLU(negative_slope=0.2)
-        )
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(64 * 2, 64, kernel_size=1, bias=False),
-            self.bn2,
-            nn.LeakyReLU(negative_slope=0.2)
-        )
-        self.conv3 = nn.Sequential(
-            nn.Conv2d(64 * 2, 128, kernel_size=1, bias=False),
-            self.bn3,
-            nn.LeakyReLU(negative_slope=0.2)
-        )
-        self.conv4 = nn.Sequential(
-            nn.Conv2d(128 * 2, 256, kernel_size=1, bias=False),
-            self.bn4,
-            nn.LeakyReLU(negative_slope=0.2)
-        )
-        self.conv5 = nn.Sequential(
-            nn.Conv1d(256, self.emb_dims, kernel_size=1, bias=False),
-            self.bn5,
-            nn.LeakyReLU(negative_slope=0.2)
-        )
+        self.conv1 = nn.Sequential(nn.Conv2d(6, 64, kernel_size=1, bias=False),
+                                   self.bn1,
+                                   nn.LeakyReLU(negative_slope=0.2))
 
-        # 新增 inv_head 模块
+        self.conv2 = nn.Sequential(nn.Conv2d(64*2, 64, kernel_size=1, bias=False),
+                                   self.bn2,
+                                   nn.LeakyReLU(negative_slope=0.2))
+
+        self.pool1 = EdgePoolingLayer(in_channels=64, k=args.k_pool1,
+                                    ratio=0.5, scoring_fun=args.scoring_fun,
+                                    )
+
+        self.conv3 = nn.Sequential(nn.Conv2d(64*2, 128, kernel_size=1, bias=False),
+                                   self.bn3,
+                                   nn.LeakyReLU(negative_slope=0.2))
+
+        self.pool2 = EdgePoolingLayer(in_channels=128, k=args.k_pool2,
+                                    ratio=0.5, scoring_fun=args.scoring_fun,
+                                    )
+
+        self.conv4 = nn.Sequential(nn.Conv2d(128*2, 256, kernel_size=1, bias=False),
+                                   self.bn4,
+                                   nn.LeakyReLU(negative_slope=0.2))
+
+        self.conv5 = nn.Sequential(nn.Conv1d(256, self.output_channels, kernel_size=1, bias=False),
+                                   self.bn5,
+                                   nn.LeakyReLU(negative_slope=0.2))
+
         self.inv_head = nn.Sequential(
-            nn.Linear(self.emb_dims * 2, self.emb_dims),
-            nn.BatchNorm1d(self.emb_dims),
-            nn.ReLU(inplace=True),
-            nn.Linear(self.emb_dims, 256)
-        )
+                            nn.Linear(args.emb_dims * 2, args.emb_dims),
+                            nn.BatchNorm1d(args.emb_dims),
+                            nn.ReLU(inplace=True),
+                            nn.Linear(args.emb_dims, 256)
+                            )
 
-    def forward(self, x):
+    def forward(self, x): #x --> (B X F X N)
+
+        #x为输入的点云：torch.size([B,3,2048])
         batch_size = x.size(0)
+        x = get_graph_feature(x, k=self.k)  #图特征：torch.size([B,6,2048,20])  k=20
+        x = self.conv1(x) #卷积， B,64,2048,20
+        x1 = x.max(dim=-1, keepdim=False)[0]  #最大池化，x1: torch.size([B,64,2048]) 为第一次卷积后的特征
 
-        # 图特征提取
-        x = get_graph_feature(x, k=self.k)
-        x = self.conv1(x)
-        x1 = x.max(dim=-1, keepdim=False)[0]
+        x = get_graph_feature(x1, k=self.k) #二次提取图特征  B,128,2048,20
+        x = self.conv2(x) #二次卷积，B，64，2048,20
+        x2 = x.max(dim=-1, keepdim=False)[0] #最大池化，x2: torch.size([B,64,2048])为第二次卷积后的特征
 
-        x = get_graph_feature(x1, k=self.k)
-        x = self.conv2(x)
-        x2 = x.max(dim=-1, keepdim=False)[0]
+        # SAG Pool N ---> N/2
+        x = self.pool1(x2).permute(0, 2, 1) #B，64，512
 
-        x = get_graph_feature(x2, k=self.k)
-        x = self.conv3(x)
-        x3 = x.max(dim=-1, keepdim=False)[0]
+        x = get_graph_feature(x, k=self.k) # B,128,512,20
+        ############# 这里的x是经过池化后的特征，进行卷积操作
+        x = self.conv3(x) #B，128，512，20
+        x3 = x.max(dim=-1, keepdim=False)[0] # B，128，512
 
-        x = get_graph_feature(x3, k=self.k)
-        x = self.conv4(x)
-        x4 = x.max(dim=-1, keepdim=False)[0]
+        # SAG Pool N/2 ---> N/4
+        x = self.pool2(x3).permute(0, 2, 1) #B，128，128
 
-        # 特征拼接
-        x = self.conv5(x4)  # (batch_size, emb_dims, num_points)
-        point_features = x
+        x = get_graph_feature(x, k=self.k) # B,256,128,20
+        x = self.conv4(x) #B，256，128，20
+        x4 = x.max(dim=-1, keepdim=False)[0]# B，256，128
 
-        # 全局池化提取全局特征
-        x1 = F.adaptive_max_pool1d(x, 1).view(batch_size, -1)
-        x2 = F.adaptive_avg_pool1d(x, 1).view(batch_size, -1)
-        global_features = torch.cat((x1, x2), 1)
+        x = self.conv5(x4)   #2,256,128
 
-        # 使用 inv_head 生成对比学习特征
-        contrastive_features = self.inv_head(global_features)
+        x0 = x # torch.Size([B, 256, 128])，最后一次卷积后的特征,也是最终的局部特征
 
-        return point_features, contrastive_features
+        x1 = F.adaptive_max_pool1d(x, 1).view(batch_size, -1) # B，256 
+        x2 = F.adaptive_avg_pool1d(x, 1).view(batch_size, -1) # B，256
+        x = torch.cat((x1, x2), 1) #B，512 
+
+        inv_feat = self.inv_head(x)  #使用反向头生成对比学习特征，弃用全局池化， B，256 全局特征
+        return  x0, inv_feat  #返回： 局部特征，全局特征
 
 
 if __name__ == '__main__':

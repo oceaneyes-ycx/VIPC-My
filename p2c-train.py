@@ -114,6 +114,7 @@ def train_net(cfg):
             for batch_idex , (view,gt_pc,part_pc) in enumerate(t):
                 view,gt_pc,part_pc = view.cuda(),gt_pc.cuda(),part_pc.cuda()
                 part_pc=farthest_point_sample(part_pc,2048)
+                
                 gt_pc=farthest_point_sample(gt_pc,2048)
                 
                 #计算损失

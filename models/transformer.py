@@ -7,23 +7,29 @@ from extensions.pointops.functions import pointops
 
 
 class Group(nn.Module):
+    #点云分组器
     def __init__(self, num_group, group_size):
         super().__init__()
-        self.num_group = num_group
-        self.group_size = group_size
+        self.num_group = num_group  #分组数    64
+        self.group_size = group_size #每组点数  32
 
     def forward(self, xyz):
         '''
-            input: B N 3
+            input: B N 3  输入点云    B,2048,3
             ---------------------------
-            output: B G M 3
-            center : B G 3
+            output: B G M 3  #每组的局部点云, M:每组的点数
+            center : B G 3  #每组的中心点
         '''
         center = pointops.fps(xyz, self.num_group)
+        #使用FPS采用获取每组的中心点，确保中心点在空间上均匀分布  B*64*3
         idx = pointops.knn(center, xyz, self.group_size)[0]
+        #使用KNN获取每组的最近邻（groupsize个点）,返回他们的索引用于定位  B*64*32   64组，每组32个点
         neighborhood = pointops.index_points(xyz, idx)
+        #根据索引idx获取每组的点云   B,64,32,3
         neighborhood = neighborhood - center.unsqueeze(2)
+        #将每组的点云减去中心点坐标，得到相对偏移量，有利于消除全局位置信息的影响    B,64,32,3
         return neighborhood, center
+        #返回每组的点云和中心点坐标
 
 
 class DummyGroup(Group):

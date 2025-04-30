@@ -227,6 +227,7 @@ class P2C(nn.Module):
         feat_recon = self.encoder(nbrs_pred.view(B, -1, 3).detach())
         latent_recon_loss = self.latent_weight * self.latent_criterion(feat, feat_recon)
         # normal consistency constraint
+        #NCC损失
         manifold_penalty = self.manifold_weight * self.manifold_constraint(pred).mean()
 
         total_loss = shape_recon_loss + shape_matching_loss + latent_recon_loss + manifold_penalty
