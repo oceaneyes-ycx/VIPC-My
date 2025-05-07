@@ -37,6 +37,8 @@ from utils.logger import *
 
 from models.transformer import Group
 
+from P2C.P2C import Encoder, Decoder,P2C
+
 trans_pc_1 = transforms.Compose(
             [
                 d_utils.PointcloudToTensor(),#将点云转化为Tensor
@@ -159,6 +161,60 @@ class End2endNetwork(nn.Module):
         final = self.decoder(pc_feat1, x_part)  #重建的点云
         
 
+
+        return final
+
+
+
+class FusionDecoder(nn.Module):
+    #从end2endNetwork中单独拆分出来的解码器模块，输入是点云和图像特征以及原始点云
+    #为P2C2定制。
+    def __init__(self):
+        super(FusionDecoder, self).__init__()
+
+        self.cross_attn1 = nn.MultiheadAttention(p.d_attn, p.num_heads, batch_first=True)
+        self.layer_norm1 = nn.LayerNorm(p.d_attn)
+
+        self.self_attn1 = nn.MultiheadAttention(p.d_attn, p.num_heads, batch_first=True)
+        self.layer_norm2 = nn.LayerNorm(p.d_attn)
+
+        self.cross_attn2 = nn.MultiheadAttention(p.d_attn, p.num_heads, batch_first=True)
+        self.layer_norm3 = nn.LayerNorm(p.d_attn)
+
+        self.self_attn2 = nn.MultiheadAttention(p.d_attn, p.num_heads, batch_first=True)
+        self.layer_norm4 = nn.LayerNorm(p.d_attn)
+
+        self.cross_attn3 = nn.MultiheadAttention(p.d_attn, p.num_heads, batch_first=True)
+        self.layer_norm5 = nn.LayerNorm(p.d_attn)
+
+        self.decoder = Decoder_Network()
+
+    def forward(self, pc_feat1, im_feat1, x_part):
+        """
+        pc_feat1: 点云空间特征 [B, N_pc, d_attn]   B,256,80
+        im_feat1: 图像空间特征 [B, N_img, d_attn]  B,256,196
+        x_part: 输入的原始部分点云 [B, 3, N]
+        """
+        # 融合阶段
+        x, _ = self.cross_attn1(pc_feat1, im_feat1, im_feat1) #B,80,256
+        pc_feat1 = self.layer_norm1(x + pc_feat1) #B,80,256
+
+        x, _ = self.self_attn1(pc_feat1, pc_feat1, pc_feat1) #B,80,256
+        pc_feat1 = self.layer_norm2(x + pc_feat1)#B,80,256
+
+        pc_skip = pc_feat1#B,80,256
+
+        x, _ = self.cross_attn2(pc_feat1, im_feat1, im_feat1)#B,80,256
+        pc_feat1 = self.layer_norm3(x + pc_feat1)#B,80,256
+
+        x, _ = self.self_attn2(pc_feat1, pc_feat1, pc_feat1)#B,80,256
+        pc_feat1 = self.layer_norm4(x + pc_feat1)#B,80,256
+
+        x, _ = self.cross_attn3(pc_feat1, pc_skip, pc_skip)#B,80,256
+        pc_feat1 = self.layer_norm5(x + pc_feat1)#B,80,256
+
+        # 解码阶段
+        final = self.decoder(pc_feat1, x_part)
 
         return final
 
@@ -360,43 +416,11 @@ class P2C2(nn.Module):
     def __init__(self, config):
         super(P2C2, self).__init__()
 
-        self.img_model = ResNet2(resnet18(pretrained=False), feat_dim = 512)
-        self.point_model = DGCNN3()
+        self.img_model = ResNet2(resnet18(pretrained=False), feat_dim = 512)#图像编码器
+        self.point_model = DGCNN3()   #点云编码器
 
+        self.fusion_decoder = FusionDecoder()   #多模态解码器
 
-        #特征融合模块
-        #使用注意力层融合两种模态的信息
-
-        self.cross_attn1 = nn.MultiheadAttention(
-            p.d_attn, p.num_heads, batch_first=True)
-        #使用多头注意力机制，交叉注意力机制
-        self.layer_norm1 = nn.LayerNorm(p.d_attn)
-        #层归一化
-
-        self.self_attn1 = nn.MultiheadAttention(
-            p.d_attn, p.num_heads, batch_first=True)
-        #使用多头注意力机制，自注意力机制
-        self.layer_norm2 = nn.LayerNorm(p.d_attn)
-        #层归一化
-
-        self.cross_attn2 = nn.MultiheadAttention(
-            p.d_attn, p.num_heads, batch_first=True)
-        #使用多头注意力机制，交叉注意力机制
-        self.layer_norm3 = nn.LayerNorm(p.d_attn)
-
-        self.self_attn2 = nn.MultiheadAttention(
-            p.d_attn, p.num_heads, batch_first=True)
-        self.layer_norm4 = nn.LayerNorm(p.d_attn)
-
-        self.cross_attn3 = nn.MultiheadAttention(
-            p.d_attn, p.num_heads, batch_first=True)
-        self.layer_norm5 = nn.LayerNorm(p.d_attn)
-
-        
-
-
-        #解码器模块，根据融合之后的特征重建点云
-        self.decoder = Decoder_Network()
 
         # define parameters (用于P2C计算损失中的参数)
         self.config = config
@@ -409,7 +433,7 @@ class P2C2(nn.Module):
 
         self.group_divider = Group(num_group = self.num_group, group_size = self.group_size)
         #分组器
-        self.generator = P2CDecoder_O(latent_dim=self.feat_dim, num_output=self.n_points)
+        #self.generator = P2CDecoder_O(latent_dim=self.feat_dim, num_output=self.n_points)
         #P2C原版的解码器，很简单的网络结构
 
         # init weights
@@ -434,19 +458,19 @@ class P2C2(nn.Module):
 
     def _get_lossfnc_and_weights(self, config):
         # define loss functions
-        self.shape_criterion = ChamferDistanceL1()#cdL1损失
+        self.shape_criterion = ChamferDistanceL1()#cdL1损失，在这里是RCD损失
         self.latent_criterion = nn.SmoothL1Loss(reduction='mean')
         #潜在空间重建损失
         self.manifold_constraint = ManifoldnessConstraint(support=config.P2Cnet.support, neighborhood_size=config.P2Cnet.neighborhood_size)
         #法向一致性约束
         self.shape_matching_weight = config.P2Cnet.shape_matching_weight
-        #形状匹配权重
+        #形状匹配权重， CD损失的权重
         self.shape_recon_weight = config.P2Cnet.shape_recon_weight
-        #形状重建权重
+        #形状重建权重， CD损失的权重
         self.latent_weight = config.P2Cnet.latent_weight
-        #潜在空间权重
+        #潜在空间权重, latent损失的权重
         self.manifold_weight = config.P2Cnet.manifold_weight
-        #法向一致性权重
+        #法向一致性权重, 法向一致性约束的权重, 默认是0（不使用）
 
     def _group_points(self, nbrs, center, B, G):
         #点云分组方法   G: 64
@@ -467,59 +491,72 @@ class P2C2(nn.Module):
             acc += self.mask_ratio[i]
         return nbr_groups, center_groups
 
-    def get_loss(self, pts):
+    def get_loss(self, pts, view):
         #具体的计算损失的方法
-        # group points  将输入的部分点云划分为多个子组，并生成对应的邻域点和中心点分组
+        
+        # group points  
+        # 首先，将输入的部分点云划分为多个patch，并生成对应的邻域点和中心点分组
         nbrs , center = self.group_divider(pts)  # neighborhood, center
-        #nbrs: B G N 3 代表邻域点   B, 64, 32, 3  (64个group中心点，每个中心点取32个邻域点)
-        #center: B G 3 代表中心点   B, 64, 3 （64个group中心点）
+        #nbrs: B G N 3 代表patch的邻域点   B, 64, 32, 3  (64个group中心点，每个中心点取32个邻域点)
+        #center: B G 3 代表patch的中心点   B, 64, 3 （64个group中心点）
         B, G, _ = center.shape
         #B: batch_size
         #G: group_size     64
+
+        #第二步，根据设定好的分组的大小，再将点云进行二次分组操作
         nbr_groups, center_groups = self._group_points(nbrs, center, B, G)
-        #点云分组
+        #点云分组  [10,50,4], 10用于计算重建损失，50用于计算补全损失，4用于计算潜在空间重建损失
         #nbr_groups: 邻域点分组,cneter_groups: 中心点分组
         # nbr_groups: 0: B,10,32,3  1: B,50,32,3, 2: B,4,32,3
         # center_groups: 0: B,10,3  1: B,50,3, 2: B,4,3
         #我们将点云分为三组，10，50，4为每组的中心点的数量，然后，每个中心点对应32个邻域点
 
+
         # pre-encoding -- partition 1
         rebuild_points = nbr_groups[0] + center_groups[0].unsqueeze(-2)
-        
         #重建点云 = 邻域点 + 中心点 (这个点云是一个假GT点云) B,10,32,3
+        
+        img_feat , _  = self.img_model(view) #使用图像编码器提取图像特征
+        #img_feat: B, 256, 196      用于解码的局部特征
+        # 第二个输入栏为统一的全局特征  B,256
 
         #10个中心点，每个中心点对应32个邻域点
-        _, feat  = self.point_model(rebuild_points.view(B, 3, -1))
-        #view: B, 3, 32*10    
+        point_feat , feat_global  = self.point_model(rebuild_points.view(B, 3, -1))
+        #view: B, 3, 32*10      feat: B, 256, 80  feat_global: B, 256
         #320个点作为假GT点云
         #使用点云编码器提取假GT点云的特征
-
+        point_feat0 = point_feat.permute(0, 2, 1)  # [B, N_pc, C] B, 80, 256
+        img_feat = img_feat.permute(0, 2, 1)  # [B, N_img, C] B, 196, 256
         # complete shape generation
-        pred = self.generator(feat).contiguous()
-        #根据特征解码器根据提取的特征生成点云    B，2048,3
+        pred = self.fusion_decoder(point_feat0, img_feat, pts)
+        #根据联合特征解码器根据提取的特征生成点云    B，2048,3
 
         #接下来计算假GT点云和生成点云之间的损失
+
+
         # shape reconstruction loss （使用第一组点云） 形状重建损失
-        rebuild_points = nbr_groups[0] + center_groups[0].unsqueeze(-2)
+        rebuild_points = nbr_groups[0] + center_groups[0].unsqueeze(-2)   #和上面一样的重建点云
         #假GT点云  B，10,32,3
         idx = pointops.knn(center_groups[0], pred,  int(self.nbr_ratio * self.group_size))[0]
-        # B,10,64   center_groups[0]为采样后的点，predw为生成的点云,使用knn方法找到采样点在pred生成点云中的最近邻点，取k个，这里设置的ratio为2,所以采用了64个
+        # B,10,64   center_groups[0]为采样后的点，pred为生成的点云,使用knn方法找到采样点在pred生成点云中的最近邻点，取k个，这里设置的ratio为2,所以采用了64个
         #找到生成点云中每个点的最近邻点
         nbrs_pred = pointops.index_points(pred, idx).reshape(B, -1, 3)
-        # B，640，3  丛生成点云pred中提取对应的邻居点
+        # B，640，3  从生成点云pred中提取对应的邻居点，在生成点云中找到第一个分组对应的生成点们
         #根据最近邻点的索引找到对应的点
         shape_recon_loss = self.shape_recon_weight * self.shape_criterion(rebuild_points.reshape(B, -1, 3), nbrs_pred).mean()
         #计算形状重建损失（cdL1损失）
+
         # shape completion loss  （使用第二组点云） 形状补全损失
         rebuild_points = nbr_groups[1] + center_groups[1].unsqueeze(-2)
         idx = pointops.knn(center_groups[1], pred,  int(self.nbr_ratio * self.group_size))[0]
         nbrs_pred = pointops.index_points(pred, idx).reshape(B, -1, 3)
         shape_matching_loss = self.shape_matching_weight * self.shape_criterion(rebuild_points.reshape(B, -1, 3), nbrs_pred).mean()
+        
         # latent reconstruction loss  （使用第三组点云） 潜在空间重建损失
         idx = pointops.knn(center_groups[2], pred, self.group_size)[0]
         nbrs_pred = pointops.index_points(pred, idx)
-        _ , feat_recon = self.point_model(nbrs_pred.view(B, 3, -1).detach())
-        latent_recon_loss = self.latent_weight * self.latent_criterion(feat, feat_recon)
+        _ , feat_recon= self.point_model(nbrs_pred.view(B, 3, -1).detach())
+        latent_recon_loss = self.latent_weight * self.latent_criterion(feat_global, feat_recon)
         # normal consistency constraint
         #NCC损失
         manifold_penalty = self.manifold_weight * self.manifold_constraint(pred).mean()
@@ -530,45 +567,17 @@ class P2C2(nn.Module):
 
 
     def forward(self, x_part, view):
-        #x_part:部分点云数据   view:图像数据
-        #x_part:[16, 3, 2048]  view:[16, 3, 224, 224]
-
-        #特征提取模块
-
         x_part = x_part.cuda()
         view = view.cuda()
 
-        #提取点云和图像的全局特征
-        pc_feat1, pc_feat2  = self.point_model(x_part.transpose(1, 2).contiguous())  # 提取点云特征
-        
-        im_feat1, im_feat2  = self.img_model(view)  # 提取图像特征
-        #fea1：空间特征, 用于点云补全  fea2：空间特征，用于对比学习
+        pc_feat1, pc_feat2 = self.point_model(x_part.transpose(1, 2).contiguous())
+        #pc_feat1: [16,256,512]  pc_feat2: [16,256]
+        im_feat1, im_feat2 = self.img_model(view)
+        #img_feat1: [16,256,196]  img_feat2: [16,256]
+        im_feat1 = im_feat1.permute(0, 2, 1)  # [B, N_img, C] B, 196, 256
+        pc_feat1 = pc_feat1.permute(0, 2, 1)  # [B, N_pc, C] B, 512, 256
 
-
-        im_feat1 = im_feat1.permute(0, 2, 1)  # 调整图像特征维度   [16, 196, 256]
-        pc_feat1 = pc_feat1.permute(0, 2, 1)  # 调整点云特征维度  [16, 128, 256]
-
-        #特征融合模块
-        x, _ = self.cross_attn1(pc_feat1, im_feat1, im_feat1)
-        pc_feat1 = self.layer_norm1(x + pc_feat1)
-        x, _ = self.self_attn1(pc_feat1, pc_feat1, pc_feat1)   #x:[16, 128, 256]
-        pc_feat1 = self.layer_norm2(x + pc_feat1)   #pc_feat:[16, 128, 256]
-
-        pc_skip = pc_feat1  #保存pc_feat，用于后续的融合   [16, 128, 256]
-
-        x, _ = self.cross_attn2(pc_feat1, im_feat1, im_feat1)
-        pc_feat1 = self.layer_norm3(x + pc_feat1)
-        x, _ = self.self_attn2(pc_feat1, pc_feat1, pc_feat1)  #x:[16, 128, 256]
-        pc_feat1 = self.layer_norm4(x + pc_feat1)   #pc_feat:[16, 128, 256]
-
-        x, _ = self.cross_attn3(pc_feat1, pc_skip, pc_skip)  #x:[16, 128, 256]
-        pc_feat1 = self.layer_norm5(x + pc_feat1)   #pc_feat:[16, 128, 256]
-        #x_part = x_part.permute(0, 2, 1)  # B x 3 x N ----> B x N x 3  [16, 2048, 3]
-
-        final = self.decoder(pc_feat1, x_part)  #重建的点云
-        
-
-
+        final = self.fusion_decoder(pc_feat1, im_feat1, x_part)
         return final
 
 
@@ -585,7 +594,7 @@ if __name__ == '__main__':
     view = torch.randn(16, 3, 224, 224).cuda()
     model = P2C2(cfg).cuda()
     out = model(x_part, view)
-    loss, shape_recon_loss, shape_compl_loss, latent_recon_loss, ncc_loss = model.get_loss(x_part)
+    loss, shape_recon_loss, shape_compl_loss, latent_recon_loss, ncc_loss = model.get_loss(x_part, view)
     print("loss:", loss)
     print("shape_recon_loss:", shape_recon_loss)
     print("shape_compl_loss:", shape_compl_loss)

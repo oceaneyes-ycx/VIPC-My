@@ -185,47 +185,52 @@ class P2C(nn.Module):
 
     def get_loss(self, pts):
         #具体的计算损失的方法
-        # group points
+        # group points   pts: B,2048,3 为输入的点云
         nbrs , center = self.group_divider(pts)  # neighborhood, center
-        #nbrs: B G N 3 代表邻域点
-        #center: B G 3 代表中心点
+        #nbrs: B G N 3 代表邻域点   B, 64, 32, 3    64个中心点，每个中心点有32个邻域点
+        #center: B G 3 代表中心点   B, 64, 3
         B, G, _ = center.shape
         #B: batch_size
         #G: group_size
         nbr_groups, center_groups = self._group_points(nbrs, center, B, G)
         #点云分组
         #nbr_groups: 邻域点分组,cneter_groups: 中心点分组
+        #分组： 10，50，4
 
         # pre-encoding -- partition 1
         rebuild_points = nbr_groups[0] + center_groups[0].unsqueeze(-2)
-        #重建点云 = 邻域点 + 中心点 (这个点云是一个假GT点云)
-        feat  = self.encoder(rebuild_points.view(B, -1, 3))
-        #特征提取
+        #重建点云 = 邻域点 + 中心点 (这个点云是一个假GT点云)      B，10，32，3
+        feat  = self.encoder(rebuild_points.view(B, -1, 3))  
+        #特征提取   B,256
 
         # complete shape generation
         pred = self.generator(feat).contiguous()
-        #根据特征解码器生成点云
+        #根据特征解码器生成点云   B, 2048, 3  输出点云数量为2048
 
         #接下来计算假GT点云和生成点云之间的损失
         # shape reconstruction loss
         rebuild_points = nbr_groups[0] + center_groups[0].unsqueeze(-2)
-        #假GT点云
+        #假GT点云   B，10，32，3
         idx = pointops.knn(center_groups[0], pred,  int(self.nbr_ratio * self.group_size))[0]
         #找到生成点云中每个点的最近邻点
         nbrs_pred = pointops.index_points(pred, idx).reshape(B, -1, 3)
-        #根据最近邻点的索引找到对应的点
+        #根据最近邻点的索引找到对应的点     B，640 ，3
         shape_recon_loss = self.shape_recon_weight * self.shape_criterion(rebuild_points.reshape(B, -1, 3), nbrs_pred).mean()
         #计算形状重建损失（cdL1损失）
         # shape completion loss
-        rebuild_points = nbr_groups[1] + center_groups[1].unsqueeze(-2)
+        rebuild_points = nbr_groups[1] + center_groups[1].unsqueeze(-2)  #B 50 32 3
         idx = pointops.knn(center_groups[1], pred,  int(self.nbr_ratio * self.group_size))[0]
         nbrs_pred = pointops.index_points(pred, idx).reshape(B, -1, 3)
         shape_matching_loss = self.shape_matching_weight * self.shape_criterion(rebuild_points.reshape(B, -1, 3), nbrs_pred).mean()
+        
+        #计算潜在空间重建损失
         # latent reconstruction loss
-        idx = pointops.knn(center_groups[2], pred, self.group_size)[0]
-        nbrs_pred = pointops.index_points(pred, idx)
-        feat_recon = self.encoder(nbrs_pred.view(B, -1, 3).detach())
+        idx = pointops.knn(center_groups[2], pred, self.group_size)[0] #第三组,从生成点云中找到中心点index
+        nbrs_pred = pointops.index_points(pred, idx) #B,4,32,3
+        feat_recon = self.encoder(nbrs_pred.view(B, -1, 3).detach())#再次用编码器输出特征
         latent_recon_loss = self.latent_weight * self.latent_criterion(feat, feat_recon)
+        
+        
         # normal consistency constraint
         #NCC损失
         manifold_penalty = self.manifold_weight * self.manifold_constraint(pred).mean()

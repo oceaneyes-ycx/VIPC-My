@@ -62,7 +62,10 @@ def get_graph_feature(x, k=20, idx=None):
     
     feature = torch.cat((feature-x, x), dim=3).permute(0, 3, 1, 2).contiguous()
   
+    #返回形状为（B，2C, N, k）的图特征
+    #B为batch_size，C为每个点的特征维度（3），N为点云中的点数，k为近邻数(设定为20)
     return feature
+    
 
 def batched_index_select(x, dim, index):
     #处理多维张量，并在指定维度上根据索引选择元素。
@@ -348,7 +351,7 @@ class DGCNN2(nn.Module):
         return  x0, inv_feat  #返回： 局部特征，全局特征
 
 class DGCNN3(nn.Module):
-    #P2C任务使用
+    #P2C任务使用，修改返回的全局特征，不再使用对比学习的特征头了
     def __init__(self,  output_channels=512):
         super(DGCNN3, self).__init__()
 
@@ -393,45 +396,55 @@ class DGCNN3(nn.Module):
                             nn.BatchNorm1d(args.emb_dims),
                             nn.ReLU(inplace=True),
                             nn.Linear(args.emb_dims, 256)
-                            )
+                            )  #特征变换将一个特征向量，映射为一个维度为256的输出向量。
 
     def forward(self, x): #x --> (B X F X N)
 
-        #x为输入的点云：torch.size([B,3,2048])
+        #x为输入的点云：torch.size([B,3,2048])    B,3,320
         batch_size = x.size(0)
-        x = get_graph_feature(x, k=self.k)  #图特征：torch.size([B,6,2048,20])  k=20
-        x = self.conv1(x) #卷积， B,64,2048,20
-        x1 = x.max(dim=-1, keepdim=False)[0]  #最大池化，x1: torch.size([B,64,2048]) 为第一次卷积后的特征
+        x = get_graph_feature(x, k=self.k)  #图特征：torch.size([B,6,2048,20])  k=20   B,6,320,20
+        x = self.conv1(x) #卷积， B,64,2048,20  B,64,320,20
+        x1 = x.max(dim=-1, keepdim=False)[0]  #最大池化，x1: torch.size([B,64,2048]) 为第一次卷积后的特征  B,64,320
 
-        x = get_graph_feature(x1, k=self.k) #二次提取图特征  B,128,2048,20
-        x = self.conv2(x) #二次卷积，B，64，2048,20
-        x2 = x.max(dim=-1, keepdim=False)[0] #最大池化，x2: torch.size([B,64,2048])为第二次卷积后的特征
+        x = get_graph_feature(x1, k=self.k) #二次提取图特征  B,128,2048,20  B,128,320,20 
+        x = self.conv2(x) #二次卷积，B，64，2048,20   B,64,320,20
+        x2 = x.max(dim=-1, keepdim=False)[0] #最大池化，x2: torch.size([B,64,2048])   B,64,320为第二次卷积后的特征
 
         # SAG Pool N ---> N/2
-        x = self.pool1(x2).permute(0, 2, 1) #B，64，512
+        x = self.pool1(x2).permute(0, 2, 1) #B，64，512  B,64,160
 
-        x = get_graph_feature(x, k=self.k) # B,128,512,20
+        x = get_graph_feature(x, k=self.k) # B,128,512,20  B,128,160,20
         ############# 这里的x是经过池化后的特征，进行卷积操作
-        x = self.conv3(x) #B，128，512，20
-        x3 = x.max(dim=-1, keepdim=False)[0] # B，128，512
+        x = self.conv3(x) #B，128，512，20 B,128,160,20 
+        x3 = x.max(dim=-1, keepdim=False)[0] # B，128，512   B,128,160
 
         # SAG Pool N/2 ---> N/4
-        x = self.pool2(x3).permute(0, 2, 1) #B，128，128
+        x = self.pool2(x3).permute(0, 2, 1) #B，128，128  B,128,80
 
-        x = get_graph_feature(x, k=self.k) # B,256,128,20
-        x = self.conv4(x) #B，256，128，20
-        x4 = x.max(dim=-1, keepdim=False)[0]# B，256，128
+        x = get_graph_feature(x, k=self.k) # B,256,128,20   B,256,80,20
+        x = self.conv4(x) #B，256，128，20  B,256,80,20
+        x4 = x.max(dim=-1, keepdim=False)[0]# B，256，128 B,256,80
 
-        x = self.conv5(x4)   #2,256,128
+        x = self.conv5(x4)   #  B,256,128  B,256,80  
 
-        x0 = x # torch.Size([B, 256, 128])，最后一次卷积后的特征,也是最终的局部特征
+        x0 = x # torch.Size([B, 256, 128])， B,256,80最后一次卷积后的特征,也是最终的局部特征
 
-        x1 = F.adaptive_max_pool1d(x, 1).view(batch_size, -1) # B，256 
-        x2 = F.adaptive_avg_pool1d(x, 1).view(batch_size, -1) # B，256
-        x = torch.cat((x1, x2), 1) #B，512 
+        x1 = F.adaptive_max_pool1d(x, 1).view(batch_size, -1) # 对每个样本的特征在最后一个维度上进行自适应最大池化 B，256 B, 256 
+        x2 = F.adaptive_avg_pool1d(x, 1).view(batch_size, -1) # 对每个样本的特征在最后一个维度上进行自适应平均池化 B，256 B，256
+        x = torch.cat((x1, x2), 1) #B，512  B，512全局特征由最大池化输出和平均池化输出组合而成
 
-        inv_feat = self.inv_head(x)  #使用反向头生成对比学习特征，弃用全局池化， B，256 全局特征
-        return  x0, inv_feat  #返回： 局部特征，全局特征
+        #inv_feat = self.inv_head(x)  #使用反向头生成对比学习特征，弃用全局池化， B，256  B,256全局特征
+        return  x0, x  #返回： 局部特征，全局特征
+
+
+
+
+
+
+
+
+
+
 
 
 if __name__ == '__main__':

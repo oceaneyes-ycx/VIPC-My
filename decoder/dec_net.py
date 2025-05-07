@@ -245,16 +245,17 @@ class AXform(nn.Module):
 
 
 class Decoder_Network(nn.Module):
-    #解码器网络
+    #解码器网络(基于AXFORM)
     def __init__(self):
         super(Decoder_Network, self).__init__()
         
         #解码器网络的参数
-        self.num_branch = opt.num_branch
-        self.K1 = opt.K1
-        self.K2 = opt.K2
-        self.N = opt.N
-        
+        self.num_branch = opt.num_branch   #8  AXFORM的分支数
+        self.K1 = opt.K1   #64  中间特征维度，表示经过 MappingNet 映射后的特征维度
+        self.K2 = opt.K2   #64  在生成点之前的中间特征维度（AXform内部使用）
+        self.N = opt.N    #128 每个分支生成的点数
+        #128 * 8 = 1024
+        #1024+1024 = 2048
 
         #定义两个modulelist       
         self.featmap = nn.ModuleList([MappingNet(self.K1) for i in range(self.num_branch)])
@@ -264,22 +265,26 @@ class Decoder_Network(nn.Module):
        
 
     def forward(self, x, x_part):
-       
+        #联合特征 x:  B,512,256   B，80，256     原始的部分点云 x_part: B,2048,3
         x_partial = x_part.contiguous() # .contiguous() to make fps work
-        x_partial = farthest_point_sample(x_partial, 1024) 
+        x_partial = farthest_point_sample(x_partial, 1024)
+        #对原始的部分点云进行采样，得到1024个点   B,1024,3
 
-        x_feat = x
+        x_feat = x  #B,512,256
 
         x_1 = torch.empty(size=(x_part.shape[0], 0, 3)).to(x_part.device)
-        
+        #x_1用于存储每个分支生成的点云，初始化为空    B,0,3        
 
-        x_branch = []
+        x_branch = [] #空列表，用于存储每个分支生成的点云
+
         for i in range(self.num_branch):
             _x_1 = self.pointgen[i](self.featmap[i](x_feat)) 
+            #使用AXForm 生成点云 B,128,3 
             x_1 = torch.cat((x_1, _x_1), dim=1) 
+            #将生成的点拼接到x_1上， 每一个batch会增加128个点
             x_branch.append(_x_1)
 
-        x_coarse = torch.cat((x_1, x_partial), dim=1) 
+        x_coarse = torch.cat((x_1, x_partial), dim=1)  #1024+1024=2048 
 
         
         
