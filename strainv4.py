@@ -222,7 +222,8 @@ def train_net(cfg):
            'ShapeReconLoss': losses.avg(1), 
            'ShapeComLoss': losses.avg(2), 
            'LatentLoss': losses.avg(3), 
-           'NCCLoss': losses.avg(4)})
+           'NCCLoss': losses.avg(4),
+           'RenderLoss': losses.avg(5),})
 
 
 
