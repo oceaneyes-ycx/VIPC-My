@@ -8,6 +8,8 @@
 2025/04/30
 暂时砍掉render LOSS
 P2C暂时不使用NCC loss
+
+2025/05/09 添加了mix函数用于混合
 '''
  
 import torch

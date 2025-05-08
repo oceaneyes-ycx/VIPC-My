@@ -39,6 +39,8 @@ from models.transformer import Group
 
 from P2C.P2C import Encoder, Decoder,P2C
 
+from UTIL import mix_shapes_2,calc_cd,calc_dcd
+
 trans_pc_1 = transforms.Compose(
             [
                 d_utils.PointcloudToTensor(),#将点云转化为Tensor
@@ -493,6 +495,7 @@ class P2C2(nn.Module):
 
     def get_loss(self, pts, view):
         #具体的计算损失的方法
+        #2025/05/09 添加一下mix的方法，尝试是否有效
         
         # group points  
         # 首先，将输入的部分点云划分为多个patch，并生成对应的邻域点和中心点分组
