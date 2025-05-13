@@ -253,7 +253,7 @@ class Decoder_Network(nn.Module):
         self.num_branch = opt.num_branch   #8  AXFORM的分支数
         self.K1 = opt.K1   #64  中间特征维度，表示经过 MappingNet 映射后的特征维度
         self.K2 = opt.K2   #64  在生成点之前的中间特征维度（AXform内部使用）
-        self.N = opt.N    #128 每个分支生成的点数
+        self.N = opt.N   #128 每个分支生成的点数
         #128 * 8 = 1024
         #1024+1024 = 2048
 

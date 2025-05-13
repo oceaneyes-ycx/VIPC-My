@@ -18,7 +18,7 @@ from encoder_dgcnn.dgcnn import DGCNN, DGCNN2, DGCNN3
 
 import torchvision.transforms as transforms
 from models.resnet import ResNet, ResNet2
-from torchvision.models import resnet50, resnet18, resnet101
+from torchvision.models import resnet50, resnet18, resnet34
 
 from config_xmf import params
 
@@ -33,13 +33,18 @@ from extensions.chamfer_dist import ChamferDistanceL1
 from extensions.pointops.functions import pointops
 from pytorch3d.ops.points_normals import estimate_pointcloud_normals
 from timm.models.layers import trunc_normal_
-from utils.logger import *
+from decoder.dec_net import MappingNet, AXform
 
+from decoder.utils.utils import *
 from models.transformer import Group
 
 from P2C.P2C import Encoder, Decoder,P2C
 
 from UTIL import mix_shapes_2,calc_cd,calc_dcd
+
+from propagation import Propagation
+
+
 
 trans_pc_1 = transforms.Compose(
             [
@@ -583,7 +588,337 @@ class P2C2(nn.Module):
         final = self.fusion_decoder(pc_feat1, im_feat1, x_part)
         return final
 
+class NET(nn.Module):
+    #需要注意输入的点云维度应该为(B,N,3)，而不是(B,3,N)，我在这里进行了一定的修改
+    # 2025/04/22 添加P2C的功能
+    # 2025/05/13 采用全新的网络架构
+    def __init__(self, config):
+        super(NET, self).__init__()
 
+        self.img_model = resnet34(pretrained=False)#图像编码器,换用更强的resnet34
+        self.point_model = DGCNN3()   #点云编码器
+
+        #self.fusion_decoder = FusionDecoder()   #多模态解码器
+
+        self.layer1 = nn.Sequential(*list(self.img_model.children())[:5])
+        #resnet34的前五层
+        self.layer2 = nn.Sequential(*list(self.img_model.children())[5])
+        #resnet34的第六层
+        self.layer3 = nn.Sequential(*list(self.img_model.children())[6])
+        #resnet34的第七层
+        self.layer4 = nn.Sequential(*list(self.img_model.children())[7])
+        #resnet34的第八层
+
+        self.deconv1_1 = nn.ConvTranspose2d(512,256,5,stride=2,padding=2,output_padding=1)
+        #512通道的特征图上进行反卷积，输出256通道的特征图
+        self.deconv1_2 = nn.ConvTranspose2d(256,128,5,stride=2,padding=2,output_padding=1)
+        #256通道的特征图上进行反卷积，输出128通道的特征图
+        self.deconv1_3 = nn.ConvTranspose2d(128,64,3,stride=2,padding=1,output_padding=1)
+        #128通道的特征图上进行反卷积，输出64通道的特征图
+        self.deconv1_4 = nn.ConvTranspose2d(64,32,3,stride=2,padding=1,output_padding=1)
+        #64通道的特征图上进行反卷积，输出32通道的特征图
+
+        self.conv6_1 = nn.Conv2d(64,32,3,stride=1,padding=1)
+        #32通道的特征图上进行卷积，输出32通道的特征图
+        self.conv6_2 = nn.Conv2d(32,3,3,stride=1,padding=1)
+        #32通道的特征图上进行卷积，输出3通道的特征图
+        
+        #AXForm解码器的参数
+        self.num_branch = p.num_branch#分支数  8
+        self.K1 = p.K1
+        self.K2 = p.K2
+        self.N = p.N
+
+
+        self.fc0_up = nn.Linear(3, 256)
+        self.fc0_down = nn.Linear(256, 3)
+        self.cross_attn0_0 = nn.MultiheadAttention(
+            256, 4, batch_first=True)
+        self.layer_norm0_0 = nn.LayerNorm(256)
+        self.cross_attn0_1 = nn.MultiheadAttention(
+            256, 4, batch_first=True)
+        self.layer_norm0_1 = nn.LayerNorm(256)
+
+        self.fc1_up = nn.Linear(3, 128)
+        self.fc1_down = nn.Linear(128, 3)
+        self.cross_attn1_0 = nn.MultiheadAttention(
+            128, 4, batch_first=True)
+        self.layer_norm1_0 = nn.LayerNorm(128)
+        self.cross_attn1_1 = nn.MultiheadAttention(
+            128, 4, batch_first=True)
+        self.layer_norm1_1 = nn.LayerNorm(128)
+
+        self.fc2_up = nn.Linear(3, 64)
+        self.fc2_down = nn.Linear(64, 3)
+        self.cross_attn2_0 = nn.MultiheadAttention(
+            64, 4, batch_first=True)
+        self.layer_norm2_0 = nn.LayerNorm(64)
+        self.cross_attn2_1 = nn.MultiheadAttention(
+            64, 4, batch_first=True)
+        self.layer_norm2_1 = nn.LayerNorm(64)
+
+        self.featmap = nn.ModuleList([MappingNet(self.K1) for i in range(self.num_branch)])
+        self.pointgen = nn.ModuleList([AXform(self.K1, self.K2, self.N) for i in range(self.num_branch)])
+
+        self.propagation = Propagation()#点云细化模块
+
+        # define parameters (用于P2C计算损失中的参数)
+        self.config = config
+        self.num_group = config.P2Cnet.num_group#分组数
+        self.group_size = config.P2Cnet.group_size#每组点数
+        self.mask_ratio = config.P2Cnet.mask_ratio#分组比例
+        self.feat_dim = config.P2Cnet.feat_dim#特征维度
+        self.n_points = config.P2Cnet.n_points#输出点数
+        self.nbr_ratio = config.P2Cnet.nbr_ratio#邻域比例        
+
+        self.group_divider = Group(num_group = self.num_group, group_size = self.group_size)
+        #分组器
+        #self.generator = P2CDecoder_O(latent_dim=self.feat_dim, num_output=self.n_points)
+        #P2C原版的解码器，很简单的网络结构
+
+        # init weights
+        self.apply(self._init_weights)#初始化权重
+        # init loss
+        self._get_lossfnc_and_weights(config)#初始化损失函数
+
+    def _init_weights(self, m):
+        #权重初始化方法
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv1d):
+            trunc_normal_(m.weight, std=.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
+
+    def _get_lossfnc_and_weights(self, config):
+        # define loss functions
+        self.shape_criterion = ChamferDistanceL1()#cdL1损失，在这里是RCD损失
+        self.latent_criterion = nn.SmoothL1Loss(reduction='mean')
+        #潜在空间重建损失
+        self.manifold_constraint = ManifoldnessConstraint(support=config.P2Cnet.support, neighborhood_size=config.P2Cnet.neighborhood_size)
+        #法向一致性约束
+        self.shape_matching_weight = config.P2Cnet.shape_matching_weight
+        #形状匹配权重， CD损失的权重
+        self.shape_recon_weight = config.P2Cnet.shape_recon_weight
+        #形状重建权重， CD损失的权重
+        self.latent_weight = config.P2Cnet.latent_weight
+        #潜在空间权重, latent损失的权重
+        self.manifold_weight = config.P2Cnet.manifold_weight
+        #法向一致性权重, 法向一致性约束的权重, 默认是0（不使用）
+
+    def _group_points(self, nbrs, center, B, G):
+        #点云分组方法   G: 64
+        #点云分组，生成领域点和中心点的分组
+        #将输入的点云数据划分为多个子组，并生成对应的邻域点和中心点分组
+        #nbrs: B, 64, 32, 3  邻域点
+        #center: B, 64, 3  中心点
+        nbr_groups = [] #存储邻域点分组结果
+        center_groups = []#存储中心点分组结果
+        perm = torch.randperm(G)  #生成一个长度为G的随机排列，确保分组的随机性
+        acc = 0 #累加器，用于记录当前分组的起始位置
+        #mask_ratio: [10, 50, 4]  分组比例，在配置文件中定义，代表每个分组的点数
+        for i in range(3):
+            mask = torch.zeros(B, G, dtype=torch.bool, device=center.device)
+            mask[:, perm[acc:acc+self.mask_ratio[i]]] = True
+            nbr_groups.append(nbrs[mask].view(B, self.mask_ratio[i], self.group_size, -1))
+            center_groups.append(center[mask].view(B, self.mask_ratio[i], -1))
+            acc += self.mask_ratio[i]
+        return nbr_groups, center_groups
+
+    def get_loss(self, pts, view):
+        #具体的计算损失的方法
+        
+        # group points  
+        # 首先，将输入的部分点云划分为多个patch，并生成对应的邻域点和中心点分组
+        nbrs , center = self.group_divider(pts)  # neighborhood, center
+        #nbrs: B G N 3 代表patch的邻域点   B, 64, 32, 3  (64个group中心点，每个中心点取32个邻域点)
+        #center: B G 3 代表patch的中心点   B, 64, 3 （64个group中心点）
+        B, G, _ = center.shape
+        #B: batch_size
+        #G: group_size     64
+
+        #第二步，根据设定好的分组的大小，再将点云进行二次分组操作
+        nbr_groups, center_groups = self._group_points(nbrs, center, B, G)
+        #点云分组  [10,50,4], 10用于输入编码器进行编码，50用于生成假GT点云用于计算损失，4用于计算潜在空间重建损失
+        #nbr_groups: 邻域点分组,cneter_groups: 中心点分组
+        # nbr_groups: 0: B,10,32,3  1: B,50,32,3, 2: B,4,32,3
+        # center_groups: 0: B,10,3  1: B,50,3, 2: B,4,3
+        #我们将点云分为三组，10，50，4为每组的中心点的数量，然后，每个中心点对应32个邻域点
+
+
+        # pre-encoding -- partition 1
+        rebuild_points = nbr_groups[0] + center_groups[0].unsqueeze(-2)
+        #重建点云 = 邻域点 + 中心点 表示一个输入点云的大致形状，用于输入编码器进行编码
+        
+        #img_feat  = self.img_model(view) #使用图像编码器提取图像特征
+        #img_feat: B, 256, 196      用于解码的局部特征
+
+        #10个中心点，每个中心点对应32个邻域点
+        point_feat , feat_global  = self.point_model(rebuild_points.view(B, 3, -1))
+        #view: B, 3, 32*10      feat: B, 256, 80  feat_global: B, 256
+        #320个点作为假GT点云
+        #使用点云编码器提取假GT点云的特征
+        #point_feat0 = point_feat.permute(0, 2, 1)  # [B, N_pc, C] B, 80, 256
+        #img_feat = img_feat.permute(0, 2, 1)  # [B, N_img, C] B, 196, 256
+        # complete shape generation
+        pred , _ , pc_gen , _  = self.forward(rebuild_points.view(B, -1, 3), view)
+
+        #pred = self.fusion_decoder(point_feat0, img_feat, pts)
+        #根据联合特征解码器根据提取的特征生成点云    B，2048,3
+
+        #接下来计算假GT点云和生成点云之间的损失
+
+
+        # shape reconstruction loss （使用第一组点云） 形状重建损失
+        rebuild_points = nbr_groups[0] + center_groups[0].unsqueeze(-2)   #和上面一样的重建点云
+        #假GT点云  B，10,32,3
+        idx = pointops.knn(center_groups[0], pred,  int(self.nbr_ratio * self.group_size))[0]
+        # B,10,64   center_groups[0]为采样后的点，pred为生成的点云,使用knn方法找到采样点在pred生成点云中的最近邻点，取k个，这里设置的ratio为2,所以采用了64个
+        #找到生成点云中每个点的最近邻点
+        nbrs_pred = pointops.index_points(pred, idx).reshape(B, -1, 3)
+        # B，640，3  从生成点云pred中提取对应的邻居点，在生成点云中找到第一个分组对应的生成点们
+        #根据最近邻点的索引找到对应的点
+        shape_recon_loss = self.shape_recon_weight * self.shape_criterion(rebuild_points.reshape(B, -1, 3), nbrs_pred).mean()
+        #计算形状重建损失（cdL1损失）
+
+        # shape completion loss  （使用第二组点云） 形状补全损失
+        rebuild_points = nbr_groups[1] + center_groups[1].unsqueeze(-2)
+        idx = pointops.knn(center_groups[1], pred,  int(self.nbr_ratio * self.group_size))[0]
+        nbrs_pred = pointops.index_points(pred, idx).reshape(B, -1, 3)
+        shape_matching_loss = self.shape_matching_weight * self.shape_criterion(rebuild_points.reshape(B, -1, 3), nbrs_pred).mean()
+        
+        # latent reconstruction loss  （使用第三组点云） 潜在空间重建损失
+        idx = pointops.knn(center_groups[2], pred, self.group_size)[0]
+        nbrs_pred = pointops.index_points(pred, idx)
+        _ , feat_recon= self.point_model(nbrs_pred.view(B, 3, -1).detach())
+        latent_recon_loss = self.latent_weight * self.latent_criterion(feat_global, feat_recon)
+        
+
+        #2d重建损失（使用2d重建点云和第二组点云计算损失
+        rebuild_points = nbr_groups[1] + center_groups[1].unsqueeze(-2)
+        idx = pointops.knn(center_groups[1], pc_gen,  int(self.nbr_ratio * self.group_size))[0]
+        nbrs_pred = pointops.index_points(pc_gen, idx).reshape(B, -1, 3)
+        gener_loss = self.shape_matching_weight * self.shape_criterion(rebuild_points.reshape(B, -1, 3), nbrs_pred).mean()
+
+        total_loss = shape_recon_loss + shape_matching_loss + latent_recon_loss + gener_loss
+
+        return total_loss, shape_recon_loss, shape_matching_loss, latent_recon_loss, gener_loss
+
+
+    def forward(self, x_part, view):
+        x_part = x_part.cuda()  #B,2048,3
+        view = view.cuda() #B,3,224,224
+
+        pc_feat1, pc_feat2 = self.point_model(x_part.transpose(1, 2).contiguous())
+        #pc_feat1: [16,256,512]  pc_feat2: [16,512]
+        #im_feat1 = self.img_model(view)
+        #img_feat1: [16,256,196]  img_feat2: [16,256]
+        #im_feat1 = im_feat1.permute(0, 2, 1)  # [B, N_img, C] B, 196, 256
+        pc_feat1 = pc_feat1.permute(0, 2, 1)  # [B, N_pc, C] B, 512, 256
+
+        batch_size = x_part.shape[0]
+
+        view = self.layer1(view) #B,3,224,224 -> B,64,56,56
+        view = self.layer2(view) #B,64,56,56 -> B,128,28,28
+        view = self.layer3(view) #B,128,28,28 -> B,256,14,14
+        view = self.layer4(view) #B,256,14,14 -> B,512,7,7
+
+        x_feat = pc_feat1 #B, 512, 256
+        x_1 = torch.empty(size=(x_part.shape[0], 0, 3)).to(x_part.device)
+
+        #基于AXForm的点云生成（仅生成缺失部分的点云）
+        for i in range(self.num_branch):
+            _x_1 = self.pointgen[i](self.featmap[i](x_feat)) 
+            x_1 = torch.cat((x_1, _x_1), dim=1)
+        #8*128=1024   x_1: B, 1024, 3
+
+        x_partial = x_part.contiguous()  #保存原始部分点云  B,2048,3
+        x_partial = farthest_point_sample(x_partial, 1024)  #从输入的部分点云中采样1024个点 B, 1024, 3
+        x_1_1024 = farthest_point_sample(x_1, 1024)#从生成的点云中采样1024个点 B, 1024, 3
+
+        #接下来对图像进行处理  view:B,512,7,7
+        de1_view = self.deconv1_1(view).view(batch_size, 256, -1).permute(0, 2, 1)
+        #对图像进行反卷积操作，输出256通道的特征图  B,196,256
+        x_1_256 = self.fc0_up(x_1_1024)
+        #对1024个生成点（缺失部分）进行线性变换，输出256维的特征 B, 1024, 256
+        x, _ = self.cross_attn0_0(de1_view, x_1_256, x_1_256)
+        #对256维的特征进行交叉注意力操作  x: B，196，256
+        de1_view = self.layer_norm0_0(x + de1_view)
+        #对交叉注意力操作后的特征进行层归一化  B，196, 256
+        x, _ = self.cross_attn0_1(x_1_256, de1_view, de1_view)
+        #对256维的特征进行交叉注意力操作  x: B，1024，256
+        x_1_256 = self.layer_norm0_1(x + x_1_256)
+        #对交叉注意力操作后的特征进行层归一化 B, 1024, 256
+        x_1_256 = self.fc0_down(x_1_256)
+        #对256维的特征进行线性变换，输出3维的特征   B, 1024, 3
+        
+        de1_view = de1_view.reshape(batch_size, 256, 14, 14)
+        #将256维的特征reshape成14*14的特征图  B,196,256 -> B, 256, 14, 14
+        de2_view = self.deconv1_2(de1_view).view(batch_size, 128, -1).permute(0, 2, 1)
+        #对14*14的特征图进行反卷积操作，输出128通道的特征图  B,784,128
+        x_1_512 = self.fc1_up(x_1_1024)
+        #对1024个点（缺失部分）进行线性变换，输出128维的特征  B, 1024, 128
+        x, _ = self.cross_attn1_0(de2_view, x_1_512, x_1_512)
+        #对128维的特征进行交叉注意力操作  x: B，784，128
+        de2_view = self.layer_norm1_0(x + de2_view)
+        #对交叉注意力操作后的特征进行层归一化 B，784，128
+        x, _ = self.cross_attn1_1(x_1_512, de2_view, de2_view)
+        #对128维的特征进行交叉注意力操作  x: B，1024，128
+        x_1_512 = self.layer_norm1_1(x + x_1_512)
+        #对交叉注意力操作后的特征进行层归一化  B， 1024, 128
+        x_1_512 = self.fc1_down(x_1_512)
+        #对128维的特征进行线性变换，输出3维的特征  B, 1024, 3
+
+        de2_view = de2_view.reshape(batch_size, 128, 28, 28)
+        #将128维的特征reshape成28*28的特征图  B，128, 28, 28
+        de3_view = self.deconv1_3(de2_view).view(batch_size, 64, -1).permute(0, 2, 1)
+        #对28*28的特征图进行反卷积操作，输出64通道的特征图
+        x_1_1024 = self.fc2_up(x_1_1024)
+        #对1024个点（缺失部分）进行线性变换，输出64维的特征
+        x, _ = self.cross_attn2_0(de3_view, x_1_1024, x_1_1024)
+        #对64维的特征进行交叉注意力操作
+        de3_view = self.layer_norm2_0(x + de3_view)
+        #对交叉注意力操作后的特征进行层归一化
+        x, _ = self.cross_attn2_1(x_1_1024, de3_view, de3_view)
+        #对64维的特征进行交叉注意力操作
+        x_1_1024 = self.layer_norm2_1(x + x_1_1024)
+        #对交叉注意力操作后的特征进行层归一化
+        x_1_1024 = self.fc2_down(x_1_1024)
+        #对64维的特征进行线性变换，输出3维的特征   B， 1024, 3
+
+        x_1 = torch.cat((x_1_256, x_1_512, x_1_1024), dim=1)
+        #将多层特征拼接在一起   B，3072，3
+        x_1 = farthest_point_sample(x_1, 1024)
+        #采样1024个点
+
+        final = torch.cat((x_1, x_partial), dim=1)
+        #缺失点云和输入部分点云拼接在一起（重建点云2048个点）
+
+        de3_view = de3_view.reshape(batch_size, 64, 56, 56)
+        #将64维的特征reshape成56*56的特征图   B，64, 56, 56
+        de3_view = self.conv6_1(de3_view)
+        #对56*56的特征图进行卷积操作，输出32通道的特征图  B，32, 56, 56
+        de3_view = self.conv6_2(de3_view)
+        #对32通道的特征图进行卷积操作，输出3通道的特征图 B,3, 56, 56
+        de3_view = de3_view.view(batch_size,56*56,3)
+        #将3通道的特征图reshape成56*56*3的特征图  B, 3136, 3
+        pc_generate = farthest_point_sample(de3_view, 2048)
+        #从56*56*3的特征图中采样2048个点    B，2048，3
+        #单视图重建得到的点云（2048个点）
+
+        pred_pcds = self.propagation(final.detach(), final.detach())[0]
+        #对重建点云进行上采样细化操作  B，4096，3
+        complete = farthest_point_sample(pred_pcds.contiguous() , 2048)
+        #对细化后的点云进行采样，得到2048个点，最终完成结果
+
+
+        return complete, final, pc_generate, pred_pcds
 
 
 
@@ -595,12 +930,9 @@ if __name__ == '__main__':
    
     x_part = torch.randn(16, 2048,3).cuda()
     view = torch.randn(16, 3, 224, 224).cuda()
-    model = P2C2(cfg).cuda()
-    out = model(x_part, view)
-    loss, shape_recon_loss, shape_compl_loss, latent_recon_loss, ncc_loss = model.get_loss(x_part, view)
-    print("loss:", loss)
-    print("shape_recon_loss:", shape_recon_loss)
-    print("shape_compl_loss:", shape_compl_loss)
-    print("latent_recon_loss:", latent_recon_loss)
-    print("ncc_loss:", ncc_loss)
-    print(out.shape) 
+    model = NET(cfg).cuda()
+    complete, final, pc_generate, pred_pcds = model(x_part, view)
+
+    loss= model.get_loss(x_part, view)
+
+
