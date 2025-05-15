@@ -29,7 +29,7 @@ from utils.schedular import GradualWarmupScheduler
 from torch.optim.lr_scheduler import *
 from tqdm import tqdm
 from datetime import datetime
-from testv1 import test_net
+from testv1 import test_net,test_net2
 
 import open3d as o3d
 import os
@@ -93,25 +93,6 @@ class ManifoldnessConstraint(nn.Module):
         return penalty#返回法向一致性约束的惩罚值（作为损失函数的一部分）
 
 
-
-def _get_lossfnc_and_weights(self, config):
-    # define loss functions
-    self.shape_criterion = ChamferDistanceL1()#cdL1损失，在这里是RCD损失
-    self.latent_criterion = nn.SmoothL1Loss(reduction='mean')
-    #潜在空间重建损失
-    self.manifold_constraint = ManifoldnessConstraint(support=config.P2Cnet.support, neighborhood_size=config.P2Cnet.neighborhood_size)
-    #法向一致性约束
-    self.shape_matching_weight = config.P2Cnet.shape_matching_weight
-    #形状匹配权重， CD损失的权重
-    self.shape_recon_weight = config.P2Cnet.shape_recon_weight
-    #形状重建权重， CD损失的权重
-    self.latent_weight = config.P2Cnet.latent_weight
-    #潜在空间权重, latent损失的权重
-    self.manifold_weight = config.P2Cnet.manifold_weight
-    #法向一致性权重, 法向一致性约束的权重, 默认是0（不使用）
-
-
-
 def train_net(cfg):
 
     # 初始化WandB
@@ -121,19 +102,19 @@ def train_net(cfg):
     torch.backends.cudnn.benchmark = True
 
 
-    ViPC_train = ViPCDataLoader(r'./train_list.txt',
+    ViPC_train = ViPCDataLoader(r'./train_list_clean_plane2.txt',
                                  data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='train',
-                                 view_align=False, category=cfg.P2C.CATE)        
+                                 view_align=False, category=cfg.TRAIN.CATE)        
     train_loader = DataLoader(ViPC_train,
-                                  batch_size=cfg.P2C.BATCH_SIZE,
+                                  batch_size=cfg.TRAIN.BATCH_SIZE,
                                   num_workers=cfg.CONST.NUM_WORKERS,
                                   shuffle=True,
                                   drop_last=True,
                                   prefetch_factor=cfg.CONST.DATA_perfetch)  
 
-    ViPC_test = ViPCDataLoader(r'./test_list.txt',
+    ViPC_test = ViPCDataLoader(r'./test_reduced.txt',
                                 data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='test',
-                                view_align=False, category=cfg.P2C.CATE)    
+                                view_align=False, category=cfg.TRAIN.CATE)    
 
     test_loader = DataLoader(ViPC_test,
                                  batch_size=cfg.TRAIN.BATCH_SIZE,
@@ -169,6 +150,28 @@ def train_net(cfg):
     steps = 0#初始化步数为0
     best_epoch = 0
 
+
+    #加载预训练模型
+    # 尝试加载断点
+    if cfg.TRAIN.RESUME:
+        checkpoint_path = cfg.TRAIN.RESUME_PATH
+        if os.path.exists(checkpoint_path):
+            print(f"==> Loading checkpoint from {checkpoint_path}")
+            checkpoint = torch.load(checkpoint_path)
+            model.load_state_dict(checkpoint['model'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+
+            # 还原epoch计数器等
+            init_epoch = checkpoint.get('epoch', 0)
+            best_metrics = checkpoint.get('best_metrics', float('inf'))
+            best_epoch = checkpoint.get('best_epoch', 0)
+
+            print(f"==> Resumed from epoch {init_epoch}, best CD {best_metrics:.4f}")
+        else:
+            print(f"!!! Resume checkpoint {checkpoint_path} not found. Starting from scratch.")
+
+
+
     #开始训练
     for epoch in range(init_epoch+1, cfg.TRAIN.N_EPOCHS + 1):
         #遍历每个epoch
@@ -199,13 +202,13 @@ def train_net(cfg):
 
 
                 #每个batch日志记录
-                wandb.log({'total_loss':loss.item(),'ShapeReconLoss':shape_recon_loss.item(),'ShapeComLoss':shape_compl_loss.item(),'LatentLoss':latent_recon_loss.item(),'NCCLoss':generationLoss.item(),
+                wandb.log({'total_loss':loss.item(),'ShapeReconLoss':shape_recon_loss.item(),'ShapeComLoss':shape_compl_loss.item(),'LatentLoss':latent_recon_loss.item(),'generationLoss':generationLoss.item(),
                           'learning_rate': optimizer.param_groups[0]['lr']})
         
         #每个epoch日志记录
         lr_scheduler.step() #学习率调度器更新
 
-        print(f"Epoch {epoch}, Total_Loss: {losses.avg(0)}, ShapeReconLoss: {losses.avg(1)}, ShapeCompletionLoss: {losses.avg(2)}, LatentLoss: {losses.avg(3)}, NCCLoss: {losses.avg(4)}")
+        print(f"Epoch {epoch}, Total_Loss: {losses.avg(0)}, ShapeReconLoss: {losses.avg(1)}, ShapeCompletionLoss: {losses.avg(2)}, LatentLoss: {losses.avg(3)}, generationLoss: {losses.avg(4)}")
 
         wandb.log({'Epoch': epoch, 
            'total_loss': losses.avg(0), 
@@ -217,7 +220,7 @@ def train_net(cfg):
 
 
         #开始测试
-        cd_eval=test_net(cfg,epoch,test_loader,model=model)
+        cd_eval=test_net2(cfg,epoch,test_loader,model=model)
 
         wandb.log({"Val/CD_Loss": cd_eval, "Epoch": epoch}) #记录到WandB
         # Save checkpoints

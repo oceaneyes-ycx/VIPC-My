@@ -755,24 +755,20 @@ class NET(nn.Module):
         # pre-encoding -- partition 1
         rebuild_points = nbr_groups[0] + center_groups[0].unsqueeze(-2)
         #重建点云 = 邻域点 + 中心点 表示一个输入点云的大致形状，用于输入编码器进行编码
-        
-        #img_feat  = self.img_model(view) #使用图像编码器提取图像特征
-        #img_feat: B, 256, 196      用于解码的局部特征
+        #这个点云采样来自于部分点云，作为点云编码器的输入
 
         #10个中心点，每个中心点对应32个邻域点
         point_feat , feat_global  = self.point_model(rebuild_points.view(B, 3, -1))
         #view: B, 3, 32*10      feat: B, 256, 80  feat_global: B, 256
-        #320个点作为假GT点云
+        #320个点作为编码器的输入
         #使用点云编码器提取假GT点云的特征
         #point_feat0 = point_feat.permute(0, 2, 1)  # [B, N_pc, C] B, 80, 256
         #img_feat = img_feat.permute(0, 2, 1)  # [B, N_img, C] B, 196, 256
         # complete shape generation
+
+
         pred , _ , pc_gen , _  = self.forward(rebuild_points.view(B, -1, 3), view)
-
-        #pred = self.fusion_decoder(point_feat0, img_feat, pts)
-        #根据联合特征解码器根据提取的特征生成点云    B，2048,3
-
-        #接下来计算假GT点云和生成点云之间的损失
+        #模型输出预测的点云，并输出单视图重建的点云
 
 
         # shape reconstruction loss （使用第一组点云） 形状重建损失
@@ -790,9 +786,10 @@ class NET(nn.Module):
         # shape completion loss  （使用第二组点云） 形状补全损失
         rebuild_points = nbr_groups[1] + center_groups[1].unsqueeze(-2)
         idx = pointops.knn(center_groups[1], pred,  int(self.nbr_ratio * self.group_size))[0]
-        nbrs_pred = pointops.index_points(pred, idx).reshape(B, -1, 3)
+        nbrs_pred = pointops.index_points(pred, idx).reshape(B, -1, 3)#找到预测的点云中对应第二组中的点
         shape_matching_loss = self.shape_matching_weight * self.shape_criterion(rebuild_points.reshape(B, -1, 3), nbrs_pred).mean()
-        
+        #将预测的点云和第二组点云进行匹配，计算损失
+
         # latent reconstruction loss  （使用第三组点云） 潜在空间重建损失
         idx = pointops.knn(center_groups[2], pred, self.group_size)[0]
         nbrs_pred = pointops.index_points(pred, idx)
@@ -801,10 +798,10 @@ class NET(nn.Module):
         
 
         #2d重建损失（使用2d重建点云和第二组点云计算损失
-        rebuild_points = nbr_groups[1] + center_groups[1].unsqueeze(-2)
-        idx = pointops.knn(center_groups[1], pc_gen,  int(self.nbr_ratio * self.group_size))[0]
-        nbrs_pred = pointops.index_points(pc_gen, idx).reshape(B, -1, 3)
-        gener_loss = self.shape_matching_weight * self.shape_criterion(rebuild_points.reshape(B, -1, 3), nbrs_pred).mean()
+        #rebuild_points = nbr_groups[1] + center_groups[1].unsqueeze(-2)
+        #idx = pointops.knn(center_groups[1], pc_gen,  int(self.nbr_ratio * self.group_size))[0]
+        #nbrs_pred = pointops.index_points(pc_gen, idx).reshape(B, -1, 3)
+        gener_loss = 0.25*self.shape_matching_weight * self.shape_criterion(pts, pc_gen).mean()
 
         total_loss = shape_recon_loss + shape_matching_loss + latent_recon_loss + gener_loss
 
@@ -912,13 +909,20 @@ class NET(nn.Module):
         #从56*56*3的特征图中采样2048个点    B，2048，3
         #单视图重建得到的点云（2048个点）
 
-        pred_pcds = self.propagation(final.detach(), final.detach())[0]
+        concat_pc = torch.cat((pc_generate, final), dim=1)
+        
+
+        coarse_pc=farthest_point_sample(concat_pc, 2048)
+        
+
+        pred_pcds = self.propagation(coarse_pc.detach(), coarse_pc.detach())[0]
         #对重建点云进行上采样细化操作  B，4096，3
         complete = farthest_point_sample(pred_pcds.contiguous() , 2048)
         #对细化后的点云进行采样，得到2048个点，最终完成结果
 
 
-        return complete, final, pc_generate, pred_pcds
+        return complete, final, pc_generate, x_1
+        #返回重建点云，粗糙点云，单视图重建得到的点云，细化后的点云（未采样）
 
 
 
