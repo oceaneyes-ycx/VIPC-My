@@ -102,7 +102,7 @@ def train_net(cfg):
     torch.backends.cudnn.benchmark = True
 
 
-    ViPC_train = ViPCDataLoader(r'./train_list_clean_plane2.txt',
+    ViPC_train = ViPCDataLoader(r'./train_list_clean_water2.txt',
                                  data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='train',
                                  view_align=False, category=cfg.TRAIN.CATE)        
     train_loader = DataLoader(ViPC_train,

@@ -21,4 +21,4 @@ def reduce_txt_file(input_file, output_file, keep_ratio=0.1):
 
 # 示例用法
 if __name__ == "__main__":
-    reduce_txt_file("test_list.txt", "test_reduced.txt")
+    reduce_txt_file("train_list.txt", "train_reduced.txt")

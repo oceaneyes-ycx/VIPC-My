@@ -55,7 +55,7 @@ def train_net(cfg):
     torch.backends.cudnn.benchmark = True
 
     #创建ViPC训练数据加载器，使用自定义的ViPCDataLoader类
-    ViPC_train = ViPCDataLoader_ft(r'./train_list_clean_plane2.txt',
+    ViPC_train = ViPCDataLoader_ft(r'./train_list_clean_water2.txt',
                                  data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='train',
                                  view_align=False, category=cfg.TRAIN.CATE)        
 

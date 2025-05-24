@@ -44,7 +44,7 @@ __C.TRAIN                                        = edict()
 __C.TRAIN.BATCH_SIZE                             = 8 #TODO: 训练批次大小
 __C.TRAIN.N_EPOCHS                               = 200
 __C.TRAIN.SAVE_FREQ                              = 40
-__C.TRAIN.LEARNING_RATE                          = 0.0001
+__C.TRAIN.LEARNING_RATE                          = 0.0005
 __C.TRAIN.LR_MILESTONES                          = [16,32,48,64,80,96,112,128,144]
 __C.TRAIN.LR_DECAY_STEP                          = [16,32,48,64,80,96,112,128,144]
 __C.TRAIN.WARMUP_STEPS                           = 1
@@ -64,7 +64,7 @@ cfg.TRAIN.RESUME_PATH = '../checkpoints/VIPC/ckpt-best.pth'  # 你想加载的�
 #
 __C.TEST                                         = edict()
 __C.TEST.METRIC_NAME                             = 'ChamferDistance'
-__C.TEST.CATE                                    = 'plane'
+__C.TEST.CATE                                    = 'watercraft' #TODO:测试使用的类别，不选all的话，写上想要测试的单独类别
 __C.TEST.BATCH_SIZE                              = 8 #TODO: 测试批次大小
 __C.CONST.WEIGHTS = r"/home/ycx/code/checkpoints/EGIInet/plane-ckpt-best.pth" #TODO:path to pre-trained checkpoints
 
@@ -109,3 +109,9 @@ __C.P2Cnet.nbr_ratio                            = 2.0
 __C.P2Cnet.support                              = 24                   
 __C.P2Cnet.neighborhood_size                    = 32            
 __C.P2Cnet.manifold_weight                      = 0    
+
+
+# SymmCompletion
+__C.SymmCompletion                            = edict()
+__C.SymmCompletion.up_factors                 = "2, 3"
+__C.SymmCompletion.include_input               = True
