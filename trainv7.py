@@ -27,7 +27,7 @@ import os
 import numpy as np
 from PIL import Image
 
-from Symm.symm import SymmCompletion
+from Symm.symm import SymmCompletion, SymmCompletion2
 
 
 loss_cd=L1_ChamferLoss()#训练损失函数
@@ -67,7 +67,7 @@ def train_net(cfg):
                                  prefetch_factor=cfg.CONST.DATA_perfetch)
     
     
-    model = SymmCompletion(cfg)  
+    model = SymmCompletion2(cfg)  
     model.cuda()
     
     # Create the optimizers
@@ -115,10 +115,11 @@ def train_net(cfg):
                 partial=farthest_point_sample(partial,2048)
                 gt=farthest_point_sample(gt,2048)
 
-                rets,complete=model(partial)   #输出补全的点云
+                rets,coarse=model(partial,png)   #输出补全的点云
 
                 #计算损失
-                cd,loss1,loss2=model.get_loss(rets,gt) #计算L1 CD loss
+                cd=model.get_loss(rets,gt,png)
+                #cd2=model.get_loss(coarse,gt,png) #计算L1 CD loss
 
                 loss_total=cd  #目前就一个CD Loss
 
@@ -127,7 +128,7 @@ def train_net(cfg):
                 optimizer.step()
 
 
-                cd_pc_item=cd.item()*1e3
+                cd_pc_item=loss_total.item()*1e3
                 total_cd_pc+=cd_pc_item
 
                 loss_item = loss_total.item() * 1e3

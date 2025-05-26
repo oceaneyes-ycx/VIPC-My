@@ -829,12 +829,13 @@ def sample_and_group_knn(xyz, points, npoint, k, use_xyz=True, idx=None):
 
 
 class PointNet_SA_Module_KNN(nn.Module):
+    #使用KNN修改之后的PointNet++
     def __init__(self, npoint, nsample, in_channel, mlp, if_bn=True, group_all=False, use_xyz=True, if_idx=False):
         """
         Args:
-            npoint: int, number of points to sample
-            nsample: int, number of points in each local region
-            radius: float
+            npoint: int, number of points to sample   需要下采样的点数
+            nsample: int, number of points in each local region  每个局部区域内的点数
+            radius: float  
             in_channel: int, input channel of features(points)
             mlp: list of int,
         """
@@ -1179,3 +1180,90 @@ class Extractor(nn.Module):
         feat = self.mlp_2(feat)
         feat = self.transformer(feat, coarse)
         return feat
+    
+
+
+class Transformer2(nn.Module):
+    #Transformer模块用于局部特征的增强
+    #修改之后的transformer模块，加入了图像特征来进行交叉注意力强化
+    #适用于symmcompletion
+    def __init__(self, in_channel, dim=256, n_knn=16, pos_hidden_dim=64, attn_hidden_multiplier=4):
+        super(Transformer2, self).__init__()
+        self.n_knn = n_knn   #每个点的最近邻数量
+        self.conv_key = nn.Conv1d(dim, dim, 1)
+        #生成
+        self.conv_query = nn.Conv1d(dim, dim, 1)
+        self.conv_value = nn.Conv1d(dim, dim, 1)
+
+        self.pos_mlp = nn.Sequential(
+            nn.Conv2d(3, pos_hidden_dim, 1),
+            nn.BatchNorm2d(pos_hidden_dim),
+            nn.ReLU(),
+            nn.Conv2d(pos_hidden_dim, dim, 1)
+        )
+
+        self.attn_mlp = nn.Sequential(
+            nn.Conv2d(dim, dim * attn_hidden_multiplier, 1),
+            nn.BatchNorm2d(dim * attn_hidden_multiplier),
+            nn.ReLU(),
+            nn.Conv2d(dim * attn_hidden_multiplier, dim, 1)
+        )
+
+        self.linear_start = nn.Conv1d(in_channel, dim, 1)
+        self.linear_end = nn.Conv1d(dim, in_channel, 1)
+
+    def forward(self, x, pos,image_feat):
+        """feed forward of transformer
+        Args:
+            x: Tensor of features, (B, in_channel, n)
+            点云特征
+            pos: Tensor of positions, (B, 3, n)
+            点的空间坐标
+
+        Returns:
+            y: Tensor of features with attention, (B, in_channel, n)
+            带有attention的点云特征
+        """
+
+        # 点云的self-attention计算的是一个领域内点与点之间的关系
+
+        identity = x  #备份输入
+
+        x = self.linear_start(x)  #将输入特征通过线性变换转换为dim维度
+        
+        b, dim, n = x.shape
+
+        pos_flipped = pos.permute(0, 2, 1).contiguous()# -> (B, n, 3)
+        
+        idx_knn = query_knn_point(self.n_knn, pos_flipped, pos_flipped)
+        #为每个点找到n_knn个最近邻居
+
+
+        #获取点的key、value和query
+        key = self.conv_key(x)  
+        
+        value = self.conv_value(x)
+
+        query = self.conv_query(x)
+
+        key = grouping_operation(key, idx_knn)  # b, dim, n, n_knn
+
+
+        #相对特征与位置编码
+        qk_rel = query.reshape((b, -1, n, 1)) - key
+
+        pos_rel = pos.reshape((b, -1, n, 1)) - grouping_operation(pos, idx_knn)  # b, 3, n, n_knn
+
+        pos_embedding = self.pos_mlp(pos_rel)  # b, dim, n, n_knn
+
+        #计算注意力权重
+        attention = self.attn_mlp(qk_rel + pos_embedding)
+        attention = torch.softmax(attention, -1)
+
+        #聚合邻域特征
+        value = grouping_operation(value, idx_knn) + pos_embedding  #加入位置偏置
+
+        agg = einsum('b c i j, b c i j -> b c i', attention, value)  # b, dim, n   注意力加权聚合
+        y = self.linear_end(agg)   #将聚合后的特征通过线性变换转换回原始维度
+
+        return y+identity  #将输出与输入特征相加，形成残差连接
