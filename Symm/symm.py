@@ -10,9 +10,9 @@ from torch import einsum
 #from models.layers.local_aggregation import CHANNEL_MAP
 ##from models.layers.norm import create_norm
 from itertools import repeat
-from models.layers.subsample import furthest_point_sample, random_sample
+#from models.layers.subsample import furthest_point_sample, random_sample
 from config_vipc import cfg
-import collections.abc
+#import collections.abc
 import torch.nn.functional as F
 from torchvision import transforms,models
 
