@@ -1,11 +1,7 @@
 #复刻SymmCompletion
-
+#代码微调，加入style_loss
 '''
-多模态扩展之后的SymmCompletion模型
-# 该模型用于点云补全任务，支持多模态输入和对称性处理
-#不同于原版 SymmCompletion，SymmCompletion2支持多模态输入,采用了图像参与的跨模态交叉注意力机制来进行特征的强化
-并减少了后期的refine阶段为1次
-添加了style loss
+
 '''
 
 import torch
@@ -31,7 +27,7 @@ import os
 import numpy as np
 from PIL import Image
 
-from Symm.symm import SymmCompletion, SymmCompletion2
+from Symm.symm import SymmCompletion, SymmCompletion2, SymmCompletion3
 
 
 loss_cd=L1_ChamferLoss()#训练损失函数
@@ -71,7 +67,7 @@ def train_net(cfg):
                                  prefetch_factor=cfg.CONST.DATA_perfetch)
     
     
-    model = SymmCompletion2(cfg)  
+    model = SymmCompletion3(cfg)  
     model.cuda()
     
     # Create the optimizers
@@ -101,7 +97,7 @@ def train_net(cfg):
         model.train()
 
         total_cd_pc= 0 #L1 CD loss
-        
+        total_style = 0
 
         total_loss = 0 #总损失
 
@@ -119,13 +115,13 @@ def train_net(cfg):
                 partial=farthest_point_sample(partial,2048)
                 gt=farthest_point_sample(gt,2048)
 
-                rets,coarse=model(partial,png)   #输出补全的点云
+                rets,complete,style_loss=model(partial,png)   #输出补全的点云
 
                 #计算损失
                 cd=model.get_loss(rets,gt,png)
                 #cd2=model.get_loss(coarse,gt,png) #计算L1 CD loss
 
-                loss_total=cd  #目前就一个CD Loss
+                loss_total=cd + 3*style_loss*1e-2 
 
                 optimizer.zero_grad()
                 loss_total.backward()
@@ -134,6 +130,9 @@ def train_net(cfg):
 
                 cd_pc_item=loss_total.item()*1e3
                 total_cd_pc+=cd_pc_item
+
+                style_item = style_loss.item() * 1e1 *3 #风格损失
+                total_style += style_item
 
                 loss_item = loss_total.item() * 1e3
                 total_loss += loss_item
@@ -144,7 +143,9 @@ def train_net(cfg):
         # Average CD loss for epoch
         avg_cdc = total_cd_pc / n_batches #平均L1 CD loss
         wandb.log({"Train/CD_Loss": avg_cdc, "Epoch": epoch, "Learning_Rate": optimizer.param_groups[0]['lr']})
-        
+        avg_style = total_style / n_batches #平均风格损失
+        wandb.log({"Train/Style_Loss": avg_style, "Epoch": epoch, "Learning_Rate": optimizer.param_groups[0]['lr']})
+
         avg_loss = total_loss / n_batches #平均总损失
         wandb.log({"Train/Total_Loss": avg_loss, "Epoch": epoch, "Learning_Rate": optimizer.param_groups[0]['lr'],
                     "Learning_Rate": optimizer.param_groups[0]['lr'],
@@ -152,7 +153,7 @@ def train_net(cfg):
 
         lr_scheduler.step() #学习率调度器更新
 
-        print('epoch:',epoch,'cd_pc:',avg_cdc,'loss:',avg_loss)
+        print('epoch:',epoch,'cd_pc:',avg_cdc, 'style_loss:', avg_style,'loss:', avg_loss)
 
 
 

@@ -504,16 +504,19 @@ class transfer_loss_shared_encoder(nn.Module):
         #前向传播函数，接收参数：pc，点云数据（张量）；im，图像数据（张量）
         B=pc.size(0)
         p_list,x_list=self.pc_to_token(pc,pc.transpose(1,2).contiguous())
-        #点云数据token化，返回点云数据和特征
+        #点云数据token化，返回点云数据和特征   p_list是点云数据的中心点列表，x_list是点云特征列表
+        #p_list 包含4个元素： B，2048，3    B，1024，3    B，512，3   B，256，3     代表着多次采样返回的不同阶段的结果
+        #x_list 包含4个元素： B，3，2048    B，48，1024   B，96，512  B，192，256     代表着多次采样返回的不同阶段的特征
+        #在之后使用-1代表多次采样的最后一个阶段的中心点云和对应的特征作为之后的处理输入
 
         cent_p,pc_f=p_list[-1],self.proj(x_list[-1].transpose(1, 2))
-        #计算点云数据的中心点和特征，将特征映射到与图像数据相同的嵌入维度
-        #返回点云数据的中心点和特征
+        #计算点云数据的中心点和特征，将特征映射到与图像数据相同的嵌入维度  
+        #返回点云数据的中心点和特征  cent_p为 B,256,3 , pc_f为 B,256,192  
         im_f,_,_=self.im_to_token(im)
-        #图像数据token化
+        #图像数据token化   im_f为 B,256,192    代表图像特征
 
         pc_pos_emd = self.pc_pos_embed(cent_p)
-        #计算点云数据的位置嵌入
+        #计算点云数据的位置嵌入  B，256,192      
 
 
         #存储每个深度层的点云数据和图像数据
@@ -524,11 +527,11 @@ class transfer_loss_shared_encoder(nn.Module):
             #循环处理每个深度层
             pc_f = self.blocks[i](pc_f + pc_pos_emd)
             im_f = self.blocks[i](im_f)
-            pc_f_list.append(pc_f)
-            im_f_list.append(im_f)
-        pc_f=self.pc_norm(pc_f)#点云数据归一化
-        im_f=self.im_norm(im_f)#图像数据归一化
-        x, _ = self.cross_layer(pc_f, im_f, pc_f)#跨模态注意力机制
+            pc_f_list.append(pc_f)   #存储每一层处理之后的点云特征，均为B，256，192
+            im_f_list.append(im_f)  #存储每一层处理之后的图像特征，均为B，256，192
+        pc_f=self.pc_norm(pc_f)#点云数据归一化 B，256，192
+        im_f=self.im_norm(im_f)#图像数据归一化 B，256，192
+        x, _ = self.cross_layer(pc_f, im_f, pc_f)#跨模态注意力机制  x: B，256，192 代表点云数据和图像数据的融合特征
         pc_f=self.cross_norm(pc_f+x)#跨模态注意力机制归一化
 
         #计算风格迁移损失
@@ -536,13 +539,13 @@ class transfer_loss_shared_encoder(nn.Module):
             im_target_gram = gram_matrix(im_f_list[-1])
             pc_target_gram = gram_matrix(pc_f_list[-1])
             style_transfer_loss = torch.mean((im_target_gram - pc_target_gram) ** 2) / (self.embed_dim*256)
-        else:
-            im_target_gram = gram_matrix(im_f_list[-1])#计算图像数据的格拉姆矩阵
-            im_style_gram = gram_matrix(im_f_list[-(self.fuse_layer_num+1)])#计算图像数据的格拉姆矩阵
-            pc_target_gram = gram_matrix(pc_f_list[-1])#计算点云数据的格拉姆矩阵
-            pc_style_gram = gram_matrix(pc_f_list[-(self.fuse_layer_num+1)])#计算点云数据的格拉姆矩阵
-            im_style_loss = torch.mean((im_target_gram - pc_style_gram) ** 2)#计算图像数据的风格损失
-            pc_style_loss = torch.mean((pc_target_gram - im_style_gram) ** 2)#计算点云数据的风格损失
+        else:    #这里的self.fuse_layer_num是指融合层数,设定为2，代表融合最后两层的特征
+            im_target_gram = gram_matrix(im_f_list[-1])#计算图像数据的格拉姆矩阵（-1层）
+            im_style_gram = gram_matrix(im_f_list[-(self.fuse_layer_num+1)])#计算图像数据的格拉姆矩阵(-3层)
+            pc_target_gram = gram_matrix(pc_f_list[-1])#计算点云数据的格拉姆矩阵（-1层）
+            pc_style_gram = gram_matrix(pc_f_list[-(self.fuse_layer_num+1)])#计算点云数据的格拉姆矩阵（-3层）
+            im_style_loss = torch.mean((im_target_gram - pc_style_gram) ** 2)#计算图像数据的风格损失（-1层 - -3层）
+            pc_style_loss = torch.mean((pc_target_gram - im_style_gram) ** 2)#计算点云数据的风格损失 (-1层 - -3层)
             style_loss = (im_style_loss+pc_style_loss) / (self.embed_dim*256)#info，256是格拉姆矩阵的维度
             pc_content_loss=torch.mean((pc_f_list[-1]-pc_f_list[-(self.fuse_layer_num+1)])**2)#str，计算点云数据的内容损失
             style_transfer_loss=pc_content_loss+style_loss#计算风格迁移损失
@@ -649,8 +652,8 @@ class transfer_loss_shared_encoder2(nn.Module):
             #循环处理每个深度层
             pc_f = self.blocks[i](pc_f + pc_pos_emd)
             im_f = self.blocks[i](im_f)
-            pc_f_list.append(pc_f)
-            im_f_list.append(im_f)
+            pc_f_list.append(pc_f)   #存储每一层处理之后的点云特征，均为B，256，192
+            im_f_list.append(im_f)   #存储每一层处理之后的图像特征，均为B，256，192
         pc_f=self.pc_norm(pc_f)#点云数据归一化
         im_f=self.im_norm(im_f)#图像数据归一化
         x, _ = self.cross_layer(pc_f, im_f, pc_f)#跨模态注意力机制

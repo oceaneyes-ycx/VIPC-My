@@ -29,6 +29,7 @@ __C.DIR.CHECKPOINTS                              = '../checkpoints/VIPC'
 __C.NETWORK                                      = edict()
 __C.NETWORK.EGIInet                              = edict()
 __C.NETWORK.EGIInet.embed_dim                    = 192
+#嵌入空间维度
 __C.NETWORK.EGIInet.depth                        = 6
 __C.NETWORK.EGIInet.img_patch_size               = 14
 __C.NETWORK.EGIInet.pc_sample_rate               = 0.125
@@ -115,3 +116,7 @@ __C.P2Cnet.manifold_weight                      = 0
 __C.SymmCompletion                            = edict()
 __C.SymmCompletion.up_factors                 = "2, 3"
 __C.SymmCompletion.include_input               = True
+__C.SymmCompletion.embed_dim                   = 1024
+__C.SymmCompletion.block_head                  = 16
+__C.SymmCompletion.pc_h_hidden_dim             = 192
+__C.SymmCompletion.pc_sample_rate              = 0.125

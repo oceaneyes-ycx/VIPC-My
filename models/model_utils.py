@@ -809,13 +809,19 @@ def sample_and_group_knn(xyz, points, npoint, k, use_xyz=True, idx=None):
 
     """
     xyz_flipped = xyz.permute(0, 2, 1).contiguous() # (B, N, 3)
+    # 1. 转置xyz为 (B, N, 3)
     new_xyz = gather_operation(xyz, furthest_point_sample(xyz_flipped, npoint)) # (B, 3, npoint)
+    # 2. FPS采样，选出npoint个中心点
+    
     if idx is None:
         # idx = query_knn(k, xyz_flipped, new_xyz.permute(0, 2, 1).contiguous())
         idx = query_knn_point(k, xyz_flipped, new_xyz.permute(0, 2, 1).contiguous())
+        # 3. KNN分组，找到每个中心点的k个最近邻    
+    
     grouped_xyz = grouping_operation(xyz, idx) # (B, 3, npoint, nsample)
+    # 4. 分组后的坐标 (B, 3, npoint, k)
     grouped_xyz -= new_xyz.unsqueeze(3).repeat(1, 1, 1, k)
-
+    
     if points is not None:
         grouped_points = grouping_operation(points, idx) # (B, f, npoint, nsample)
         if use_xyz:
@@ -824,7 +830,7 @@ def sample_and_group_knn(xyz, points, npoint, k, use_xyz=True, idx=None):
             new_points = grouped_points
     else:
         new_points = grouped_xyz
-
+    # 5. 分组后的特征 (B, f, npoint, k)
     return new_xyz, new_points, idx, grouped_xyz
 
 
@@ -833,8 +839,8 @@ class PointNet_SA_Module_KNN(nn.Module):
     def __init__(self, npoint, nsample, in_channel, mlp, if_bn=True, group_all=False, use_xyz=True, if_idx=False):
         """
         Args:
-            npoint: int, number of points to sample   需要下采样的点数
-            nsample: int, number of points in each local region  每个局部区域内的点数
+            npoint: int, number of points to sample    需要下采样的点数（输出点数）
+            nsample: int, number of points in each local region  每个局部区域内的点数（邻居点数）
             radius: float  
             in_channel: int, input channel of features(points)
             mlp: list of int,
@@ -860,16 +866,18 @@ class PointNet_SA_Module_KNN(nn.Module):
     def forward(self, xyz, points, idx=None):
         """
         Args:
-            xyz: Tensor, (B, 3, N)
-            points: Tensor, (B, f, N)
+            xyz: Tensor, (B, 3, N)  输入点云的坐标
+            points: Tensor, (B, f, N) 输入点云的特征
 
         Returns:
-            new_xyz: Tensor, (B, 3, npoint)
-            new_points: Tensor, (B, mlp[-1], npoint)
+            new_xyz: Tensor, (B, 3, npoint)   下采样后的点云坐标
+            new_points: Tensor, (B, mlp[-1], npoint)  #下采样后的点云特征
         """
-        if self.group_all:
+        if self.group_all:#是否对所有点进行分组
+            
             new_xyz, new_points, idx, grouped_xyz = sample_and_group_all(xyz, points, self.use_xyz)
         else:
+            #否则，用KNN进行分组，采样npoint个中心点，每个中心点找到nsample个最近邻点
             new_xyz, new_points, idx, grouped_xyz = sample_and_group_knn(xyz, points, self.npoint, self.nsample, self.use_xyz, idx=idx)
 
         new_points = self.mlp_conv(new_points)
@@ -1267,3 +1275,47 @@ class Transformer2(nn.Module):
         y = self.linear_end(agg)   #将聚合后的特征通过线性变换转换回原始维度
 
         return y+identity  #将输出与输入特征相加，形成残差连接
+    
+
+
+class ImageSelfAttentionBlock(nn.Module):
+
+    # Image Self-Attention Block
+    def __init__(self, dim, num_heads=8, mlp_ratio=4.0, dropout=0.1):
+        super(ImageSelfAttentionBlock, self).__init__()
+
+        self.norm1 = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, batch_first=True)
+
+        self.norm2 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, int(dim * mlp_ratio)),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(int(dim * mlp_ratio), dim),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x):
+        """
+        Args:
+            x: Tensor of shape (B, N, C)
+               - B: batch size
+               - N: number of tokens (e.g., 14x14 = 196 for 14x14 patch grid)
+               - C: embedding dimension
+        Returns:
+            out: Tensor of shape (B, N, C)
+        """
+
+        # Self-Attention Block
+        x_res = x
+        x = self.norm1(x)
+        attn_out, _ = self.attn(x, x, x)
+        x = x_res + attn_out  # Residual connection
+
+        # Feedforward Block
+        x_res = x
+        x = self.norm2(x)
+        x = x_res + self.mlp(x)  # Residual connection
+
+        return x
