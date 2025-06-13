@@ -219,8 +219,8 @@ class ImageEncoder3(nn.Module):
         in_features = base.fc.in_features
         
     def forward(self,x):
-        x = self.base(x)
-        x = x.view(x.size(0), 128, -1)
+        x = self.base(x)  #B,256,14,14
+        x = x.view(x.size(0), 128, -1)  #B,128,392
        
        
         return x   
@@ -331,7 +331,7 @@ class CSTNet(nn.Module):
     def __init__(self, out_dim=512,img_feat_dim=128):
         from timm.models.vision_transformer import Block
         super(CSTNet, self).__init__()
-        self.img_encoder = ImageEncoder3()  #图像编码器
+        self.img_encoder = ImageEncoder2(out_dim=img_feat_dim)  #图像编码器
         
         self.sa_module_1 = PointNet_SA_Module_KNN(512, 16, 3, [64, 128], group_all=False, if_bn=False, if_idx=True)
         #使用KNN修改之后的pointnet++，用于点云的采样和特征提取
@@ -363,7 +363,7 @@ class CSTNet(nn.Module):
         l0_points = point_cloud #部分点云
 
         #提取图像全局特征
-        img_feat_L = self.img_encoder(image)  # B, img_feat_dim
+        img_feat_G,img_feat_L = self.img_encoder(image)  # B, img_feat_dim
         
         #B,128    B,128,512
 
