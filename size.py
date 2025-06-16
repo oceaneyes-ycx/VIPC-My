@@ -21,7 +21,7 @@ import os
 import numpy as np
 from PIL import Image
 
-from Symm.symm import SymmCompletion, SymmCompletion2
+from Symm.symm import SymmCompletion, SymmCompletion2, SymmCompletion3
 
 import config_vipc
 
@@ -31,7 +31,7 @@ def count_parameters(model):
 
 cfg = config_vipc.cfg
 
-model=SymmCompletion2(cfg)
+model=SymmCompletion3(cfg)
 
 
 print(f"Total Parameters: {count_parameters(model)/1e6:.2f}M")

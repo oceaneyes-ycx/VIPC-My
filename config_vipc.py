@@ -46,8 +46,11 @@ __C.TRAIN.BATCH_SIZE                             = 16 #TODO: 训练批次大小
 __C.TRAIN.N_EPOCHS                               = 200
 __C.TRAIN.SAVE_FREQ                              = 40
 __C.TRAIN.LEARNING_RATE                          = 0.0005
-__C.TRAIN.LR_MILESTONES                          = [16,32,48,64,80,96,112,128,144]
-__C.TRAIN.LR_DECAY_STEP                          = [16,32,48,64,80,96,112,128,144]
+__C.TRAIN.LR_MILESTONES                          = [20,40,60,80,100,120,140,160,180] #TODO:学习率衰减的里程碑
+# 里程碑是指在训练过程中，学习率会在这些特定的epoch时刻进行衰减
+#[16,32,48,64,80,96,112,128,144]
+__C.TRAIN.LR_DECAY_STEP                          = [20,40,60,80,100,120,140,160,180,200]
+#[16,32,48,64,80,96,112,128,144]
 __C.TRAIN.WARMUP_STEPS                           = 1
 __C.TRAIN.GAMMA                                  = 0.7
 __C.TRAIN.BETAS                                  = (.9, .999)

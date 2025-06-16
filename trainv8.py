@@ -115,7 +115,7 @@ def train_net(cfg):
                 partial=farthest_point_sample(partial,2048)
                 gt=farthest_point_sample(gt,2048)
 
-                rets,complete,style_loss=model(partial,png)   #输出补全的点云
+                rets,complete,style_loss,_=model(partial,png)   #输出补全的点云
 
                 #计算损失
                 cd=model.get_loss(rets,gt,png)

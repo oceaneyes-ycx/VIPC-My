@@ -391,17 +391,22 @@ class CSTNet(nn.Module):
         # B, 512, 128  将图像全局特征扩展到每个关键点
         # 转换为 (B, N, C) 供 cross-attn 使用
         keyfeatures = keyfeatures.transpose(1, 2).contiguous()  # B, 512, 128
+        keyfeatures0= keyfeatures  # 保存原始关键点特征用于后续融合
+        img_feat0= img_feat  # 保存原始图像特征用于后续融合
 
         #将关键点特征和图像特征进行交叉注意力融合
         keyfeatures = self.cross_attn(keyfeatures, img_feat)    # B, 512, 128
         #嵌入维度为128的关键点特征和图像特征进行交叉注意力融合
+        img_feat = self.cross_attn(img_feat, keyfeatures0)  # B, 512, 128
 
 
         #计算style loss
         im_target_gram = gram_matrix(img_feat)
+        im_target_gram0 = gram_matrix(img_feat0)  
         pc_target_gram = gram_matrix(keyfeatures)
-        style_transfer_loss = torch.mean((im_target_gram - pc_target_gram) ** 2) / (128*512)
-        
+        pc_target_gram0 = gram_matrix(keyfeatures0)
+        style_transfer_loss = torch.mean((im_target_gram - pc_target_gram0) ** 2 + (pc_target_gram - im_target_gram0) ** 2) / (128*512)
+
         #作为keypoints最终的特征
         keyfeatures = keyfeatures.transpose(1, 2).contiguous()  # B, 128, 512
         img_feat= img_feat.transpose(1, 2).contiguous()  # B, 128, 512
@@ -436,7 +441,7 @@ class CSTNet(nn.Module):
         # B,3,512  转置为(B,3,512)的形式
         coarse = torch.cat([symmetry_points, keypoints], dim=-1) 
         # B, 1024, 3  将对称点云和关键点云拼接在一起，形成粗糙的点云
-        return coarse, symmetry_points, keyfeatures,img_feat,style_transfer_loss
+        return coarse, symmetry_points, keyfeatures,img_feat,style_transfer_loss,keypoints
         #返回： 粗糙点云，对称点云，关键点特征, 图像特征
 
 
@@ -639,7 +644,7 @@ class SGFormer2(nn.Module):
         feat=self.fusion_1(feat, img_feat_exp)
 
         feat_symmetry_attn = self.fusion_4(symmetry_feat,img_feat_exp)  
-        #图像特征和对称点云特征的交叉注意力
+        #图像特征和对称点云特征的交叉注意力   #B, 512, 256
 
         #feat=self.fusion_1(feat, img_feat_exp)      
 
@@ -852,8 +857,8 @@ class SymmCompletion3(nn.Module):
         Args:
             point_cloud: (B, N, 3)
         """
-        
-        coarse, symmetry_points, keyfeatures,img_feat,style_loss = self.lstnet(point_cloud.transpose(2,1).contiguous(),view)    
+
+        coarse, symmetry_points, keyfeatures,img_feat,style_loss,keypoints = self.lstnet(point_cloud.transpose(2,1).contiguous(),view)
         #coarse: B,3,1024 ,symmetry_points: B,3,512, keyfeatures: B,128,512, img_feat: B,128,512
 
 
@@ -875,7 +880,9 @@ class SymmCompletion3(nn.Module):
         complete=farthest_point_sample(rets[-1], 2048)
         rets.append(complete)
 
-        return rets,complete,style_loss
+        mid=[keypoints,symmetry_points,coarse,fine1,complete]
+
+        return rets,complete,style_loss,mid
 
 
 if __name__ == '__main__':

@@ -64,14 +64,14 @@ def save_point_cloud_to_ply(pc, ply_path):
 
 if __name__ == "__main__":
     # Replace these paths with your local .dat file paths
-    pc_path = './part/00.dat'
-    view_metadata_path = './rendering/rendering_metadata.txt'
-    part_view_id = '00'  # Replace with actual part view ID
-    image_view_id = '00'  # Replace with actual image view ID
+    pc_path = './03.dat'
+    view_metadata_path = './rendering_metadata.txt'
+    part_view_id = '03'  # Replace with actual part view ID
+    image_view_id = '03'  # Replace with actual image view ID
 
     pc = load_and_process_point_cloud(pc_path, view_metadata_path, part_view_id, image_view_id)
     visualize_point_cloud(pc)
     # Save point cloud to .ply file
-    ply_path = './output/point_cloud.ply'
+    ply_path = './point_cloud_part.ply'
     save_point_cloud_to_ply(pc, ply_path)
     print(f"Point cloud saved to {ply_path}")
