@@ -37,7 +37,7 @@ def train_net(cfg):
     #接收一个配置文件作为参数
 
     # Initialize wandb
-    wandb.init(project="ViPC-Training-symm-v2", config=cfg, name=f"{cfg.TRAIN.CATE}_{datetime.now().strftime('%y-%m-%d-%H-%M-%S')}")
+    wandb.init(project="ViPC-Training-symm-v2-test", config=cfg, name=f"{cfg.TRAIN.CATE}_{datetime.now().strftime('%y-%m-%d-%H-%M-%S')}")
 
     #设置cuDNN的benchmark模式为True，以加速卷积操作
     torch.backends.cudnn.benchmark = True
@@ -121,7 +121,7 @@ def train_net(cfg):
                 cd=model.get_loss(rets,gt,png)
                 #cd2=model.get_loss(coarse,gt,png) #计算L1 CD loss
 
-                loss_total=cd + 3*style_loss*1e-2 
+                loss_total=cd + 30*style_loss*1e-2 
 
                 optimizer.zero_grad()
                 loss_total.backward()
@@ -131,7 +131,7 @@ def train_net(cfg):
                 cd_pc_item=loss_total.item()*1e3
                 total_cd_pc+=cd_pc_item
 
-                style_item = style_loss.item() * 1e1 *3 #风格损失
+                style_item = style_loss.item() * 1e1 *30 #风格损失
                 total_style += style_item
 
                 loss_item = loss_total.item() * 1e3

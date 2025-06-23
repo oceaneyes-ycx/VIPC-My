@@ -385,6 +385,7 @@ class CSTNet(nn.Module):
         # 图像特征扩展到每个关键点
         #img_feat = img_feat_G.unsqueeze(1).repeat(1, keyfeatures.size(-1), 1)  # B, 512, img_feat_dim
         img_feat = img_feat_L.transpose(1, 2).contiguous()  # B, 512, 128
+
         img_feat = self.transformer_2(img_feat)  # B, 512, 128
         #使用图像自注意力模块对图像特征进行处理
 
@@ -410,7 +411,7 @@ class CSTNet(nn.Module):
         #作为keypoints最终的特征
         keyfeatures = keyfeatures.transpose(1, 2).contiguous()  # B, 128, 512
         img_feat= img_feat.transpose(1, 2).contiguous()  # B, 128, 512
-
+        img_feat0 = img_feat0.transpose(1, 2).contiguous()  # B, 128, 512
 
         feat = self.expanding(keyfeatures)
         #特征维度从128扩展到512    B, 512, 512
@@ -441,7 +442,7 @@ class CSTNet(nn.Module):
         # B,3,512  转置为(B,3,512)的形式
         coarse = torch.cat([symmetry_points, keypoints], dim=-1) 
         # B, 1024, 3  将对称点云和关键点云拼接在一起，形成粗糙的点云
-        return coarse, symmetry_points, keyfeatures,img_feat,style_transfer_loss,keypoints
+        return coarse, symmetry_points, keyfeatures,img_feat0,style_transfer_loss,keypoints
         #返回： 粗糙点云，对称点云，关键点特征, 图像特征
 
 
@@ -685,10 +686,10 @@ class local_encoder(nn.Module):
         self.transformer = Transformer(out_channel, dim=64)
 
     def forward(self,input):
-        feat = self.mlp_1(input)
-        feat = torch.cat([feat,torch.max(feat, 2, keepdim=True)[0].repeat((1, 1, feat.size(2)))], 1)
-        feat = self.mlp_2(feat)
-        feat = self.transformer(feat,input)
+        feat = self.mlp_1(input)  #B,128,512
+        feat = torch.cat([feat,torch.max(feat, 2, keepdim=True)[0].repeat((1, 1, feat.size(2)))], 1)#B,256,512
+        feat = self.mlp_2(feat) #B,128,512
+        feat = self.transformer(feat,input)#B,128,512
 
         return feat
 
