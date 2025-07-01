@@ -55,7 +55,7 @@ __C.TRAIN.WARMUP_STEPS                           = 1
 __C.TRAIN.GAMMA                                  = 0.7
 __C.TRAIN.BETAS                                  = (.9, .999)
 __C.TRAIN.WEIGHT_DECAY                           = 0
-__C.TRAIN.CATE                                   = 'plane' #TODO:训练使用的类别，不选all的话，写上想要训练的单独类别
+__C.TRAIN.CATE                                   = 'all' #TODO:训练使用的类别，不选all的话，写上想要训练的单独类别
 __C.TRAIN.d_size                                 = 1
 
 cfg.TRAIN.RESUME = False  # 是否启用断点续训

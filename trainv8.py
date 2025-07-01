@@ -43,7 +43,7 @@ def train_net(cfg):
     torch.backends.cudnn.benchmark = True
 
     #创建ViPC训练数据加载器，使用自定义的ViPCDataLoader类
-    ViPC_train = ViPCDataLoader(r'./train_list_clean_plane2.txt',
+    ViPC_train = ViPCDataLoader(r'./train_list_shot.txt',
                                  data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='train',
                                  view_align=False, category=cfg.TRAIN.CATE)
     
@@ -55,7 +55,7 @@ def train_net(cfg):
                                   drop_last=True,
                                   prefetch_factor=cfg.CONST.DATA_perfetch)
     #创建ViPC测试数据加载器
-    ViPC_test = ViPCDataLoader(r'./test_reduced.txt',
+    ViPC_test = ViPCDataLoader(r'./test_list_shot.txt',
                                 data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='test',
                                 view_align=False, category=cfg.TRAIN.CATE)
     #创建测试数据加载器
