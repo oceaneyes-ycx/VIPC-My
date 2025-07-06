@@ -42,7 +42,7 @@ __C.NETWORK.shared_encoder.pc_h_hidden_dim       = 192
 # Train
 #
 __C.TRAIN                                        = edict()
-__C.TRAIN.BATCH_SIZE                             = 16 #TODO: 训练批次大小
+__C.TRAIN.BATCH_SIZE                             = 64 #TODO: 训练批次大小
 __C.TRAIN.N_EPOCHS                               = 200
 __C.TRAIN.SAVE_FREQ                              = 40
 __C.TRAIN.LEARNING_RATE                          = 0.0005

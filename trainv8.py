@@ -89,6 +89,18 @@ def train_net(cfg):
     steps = 0#初始化步数为0
     best_epoch = 0
 
+    # 恢复训练
+    checkpoint_dir = cfg.DIR.CHECKPOINTS
+    checkpoint_file = os.path.join(checkpoint_dir, 'ckpt-best.pth')
+    if os.path.exists(checkpoint_file):
+        checkpoint = torch.load(checkpoint_file)
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        init_epoch = checkpoint['epoch'] + 1
+        logging.info(f"Checkpoint loaded. Resuming training from epoch {init_epoch}")
+
+    
+    
 
     #开始训练
     for epoch in range(init_epoch+1, cfg.TRAIN.N_EPOCHS + 1):
@@ -173,6 +185,7 @@ def train_net(cfg):
                 file_name = 'ckpt-epoch-%03d.pth' % epoch
             output_path = os.path.join(cfg.DIR.CHECKPOINTS, file_name)
             torch.save({
+                'epoch': epoch,
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict()
             }, output_path)
