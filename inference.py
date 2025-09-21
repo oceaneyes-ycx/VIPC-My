@@ -20,7 +20,7 @@ import torch
 from torchvision import transforms
 
 # Ensure result directory exists
-result_dir = "./target"
+result_dir = "../target"
 os.makedirs(result_dir, exist_ok=True)
 os.makedirs(os.path.join(result_dir, "partial_pc"), exist_ok=True)
 os.makedirs(os.path.join(result_dir, "completed_pc"), exist_ok=True)
@@ -128,21 +128,21 @@ def inference(data_dir, model_path, output_dir):
                 _, completed_pc, _, ret = model(pc_part_tensor, image_tensor)
 
             # Save results
-            save_point_cloud_as_ply(os.path.join(output_dir, "partial_pc", f"{base_name}.ply"),
+            save_point_cloud_as_ply(os.path.join(output_dir, "partial_pc", f"partial_{base_name}.ply"),
                                     pc_part_tensor.squeeze(0).cpu().numpy())
-            save_point_cloud_as_ply(os.path.join(output_dir, "GT_PC", f"{base_name}.ply"),
+            save_point_cloud_as_ply(os.path.join(output_dir, "GT_PC", f"gt_{base_name}.ply"),
                                     pc_gt_tensor.squeeze(0).cpu().numpy())
-            save_point_cloud_as_ply(os.path.join(output_dir, "completed_pc", f"{base_name}.ply"),
+            save_point_cloud_as_ply(os.path.join(output_dir, "completed_pc", f"mycompleted_{base_name}.ply"),
                                     completed_pc.squeeze(0).cpu().numpy())
             image.save(os.path.join(output_dir, "input_images", f"{base_name}.png"))
 
-            save_point_cloud_as_ply(os.path.join(output_dir, "keypoints", f"{base_name}.ply"),
+            save_point_cloud_as_ply(os.path.join(output_dir, "keypoints", f"keypoints_{base_name}.ply"),
                                     ret[0].permute(0, 2, 1).squeeze(0).cpu().numpy())
-            save_point_cloud_as_ply(os.path.join(output_dir, "symmetry_points", f"{base_name}.ply"),
+            save_point_cloud_as_ply(os.path.join(output_dir, "symmetry_points", f"symmetry_points_{base_name}.ply"),
                                     ret[1].permute(0, 2, 1).squeeze(0).cpu().numpy())
-            save_point_cloud_as_ply(os.path.join(output_dir, "coarse", f"{base_name}.ply"),
+            save_point_cloud_as_ply(os.path.join(output_dir, "coarse", f"coarse_{base_name}.ply"),
                                     ret[2].permute(0, 2, 1).squeeze(0).cpu().numpy())
-            save_point_cloud_as_ply(os.path.join(output_dir, "fine", f"{base_name}.ply"),
+            save_point_cloud_as_ply(os.path.join(output_dir, "fine", f"fine_{base_name}.ply"),
                                     ret[3].squeeze(0).cpu().numpy())
             
 
@@ -150,8 +150,8 @@ def inference(data_dir, model_path, output_dir):
             print(f"[✓] Processed {file_name}")
 
 if __name__ == "__main__":
-    data_directory = "./target"  # Directory containing input images and partial point clouds
-    model_checkpoint = "../checkpoints/VIPC/ckpt-best.pth"  # Path to the trained model checkpoint
+    data_directory = "../target"  # Directory containing input images and partial point clouds
+    model_checkpoint = "../checkpoints/My_model/plane-ckpt-best.pth"  # Path to the trained model checkpoint
     output_directory = result_dir  # Directory to save the results
 
     inference(data_directory, model_checkpoint, output_directory)

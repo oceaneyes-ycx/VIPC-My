@@ -96,7 +96,7 @@ def test_net(cfg, epoch_idx=-1, test_data_loader=None, test_writer=None, model=N
                 
                 #partial: (4,2048,3)    png:(4,3,224,224)
 
-                _ , recon, _,_=model(partial,png)#重建点云
+                _ , recon,_ , _=model(partial,png)#重建点云
                 cdl1,cdl2,f1 = calc_cd(recon,gt,calc_f1=True)
 
                 cdl1=cdl1.mean().item() * 1e3

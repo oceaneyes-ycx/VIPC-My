@@ -1,5 +1,7 @@
 #复刻SymmCompletion
 
+
+#更新： 目前和trainv8相比，仅仅是没有使用风格迁移损失了
 '''
 
 '''
@@ -37,13 +39,13 @@ def train_net(cfg):
     #接收一个配置文件作为参数
 
     # Initialize wandb
-    wandb.init(project="ViPC-Training-symm-v1", config=cfg, name=f"{cfg.TRAIN.CATE}_{datetime.now().strftime('%y-%m-%d-%H-%M-%S')}")
+    wandb.init(project="ViPC-Training-symm-smalltest1", config=cfg, name=f"{cfg.TRAIN.CATE}_{datetime.now().strftime('%y-%m-%d-%H-%M-%S')}")
 
     #设置cuDNN的benchmark模式为True，以加速卷积操作
     torch.backends.cudnn.benchmark = True
 
     #创建ViPC训练数据加载器，使用自定义的ViPCDataLoader类
-    ViPC_train = ViPCDataLoader(r'./train_list_clean_plane2.txt',
+    ViPC_train = ViPCDataLoader(r'./train_reduced.txt',
                                  data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='train',
                                  view_align=False, category=cfg.TRAIN.CATE)
     

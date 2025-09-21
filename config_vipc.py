@@ -22,7 +22,7 @@ __C.CONST.DATA_perfetch                          = 8
 __C.DIR                                          = edict()
 __C.DIR.OUT_PATH                                 = '/home/ycx/code/VIPC-My/project_logs'#path to save checkpoints and logs
 __C.CONST.DEVICE                                 = '0,1'
-__C.DIR.CHECKPOINTS                              = '../checkpoints/VIPC'
+__C.DIR.CHECKPOINTS                              = '../checkpoints/My_model'
 #
 # Network
 #
@@ -43,7 +43,7 @@ __C.NETWORK.shared_encoder.pc_h_hidden_dim       = 192
 #
 __C.TRAIN                                        = edict()
 __C.TRAIN.BATCH_SIZE                             = 16 #TODO: 训练批次大小
-__C.TRAIN.N_EPOCHS                               = 200
+__C.TRAIN.N_EPOCHS                               = 100
 __C.TRAIN.SAVE_FREQ                              = 40
 __C.TRAIN.LEARNING_RATE                          = 0.0005
 __C.TRAIN.LR_MILESTONES                          = [20,40,60,80,100,120,140,160,180] #TODO:学习率衰减的里程碑
@@ -55,11 +55,11 @@ __C.TRAIN.WARMUP_STEPS                           = 1
 __C.TRAIN.GAMMA                                  = 0.7
 __C.TRAIN.BETAS                                  = (.9, .999)
 __C.TRAIN.WEIGHT_DECAY                           = 0
-__C.TRAIN.CATE                                   = 'all' #TODO:训练使用的类别，不选all的话，写上想要训练的单独类别
+__C.TRAIN.CATE                                   = 'chair' #TODO:训练使用的类别，不选all的话，写上想要训练的单独类别
 __C.TRAIN.d_size                                 = 1
 
 cfg.TRAIN.RESUME = False  # 是否启用断点续训
-cfg.TRAIN.RESUME_PATH = '../checkpoints/VIPC/ckpt-best.pth'  # 你想加载的断点文件路径
+cfg.TRAIN.RESUME_PATH = '../checkpoints/My_model/all-ckpt-best.pth'  # 你想加载的断点文件路径
 
 
 
@@ -68,7 +68,7 @@ cfg.TRAIN.RESUME_PATH = '../checkpoints/VIPC/ckpt-best.pth'  # 你想加载的�
 #
 __C.TEST                                         = edict()
 __C.TEST.METRIC_NAME                             = 'ChamferDistance'
-__C.TEST.CATE                                    = 'watercraft' #TODO:测试使用的类别，不选all的话，写上想要测试的单独类别
+__C.TEST.CATE                                    = 'all' #TODO:测试使用的类别，不选all的话，写上想要测试的单独类别
 __C.TEST.BATCH_SIZE                              = 8 #TODO: 测试批次大小
 __C.CONST.WEIGHTS = r"/home/ycx/code/checkpoints/EGIInet/plane-ckpt-best.pth" #TODO:path to pre-trained checkpoints
 

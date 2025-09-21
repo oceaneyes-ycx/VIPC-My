@@ -37,13 +37,13 @@ def train_net(cfg):
     #接收一个配置文件作为参数
 
     # Initialize wandb
-    wandb.init(project="ViPC-Training-symm-v2-test", config=cfg, name=f"{cfg.TRAIN.CATE}_{datetime.now().strftime('%y-%m-%d-%H-%M-%S')}")
+    wandb.init(project="ViPC-Training-symm-v2-retry-table", config=cfg, name=f"{cfg.TRAIN.CATE}_{datetime.now().strftime('%y-%m-%d-%H-%M-%S')}")
 
     #设置cuDNN的benchmark模式为True，以加速卷积操作
     torch.backends.cudnn.benchmark = True
 
     #创建ViPC训练数据加载器，使用自定义的ViPCDataLoader类
-    ViPC_train = ViPCDataLoader(r'./train_list_shot.txt',
+    ViPC_train = ViPCDataLoader(r'./train_reduced.txt',
                                  data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='train',
                                  view_align=False, category=cfg.TRAIN.CATE)
     
@@ -55,7 +55,7 @@ def train_net(cfg):
                                   drop_last=True,
                                   prefetch_factor=cfg.CONST.DATA_perfetch)
     #创建ViPC测试数据加载器
-    ViPC_test = ViPCDataLoader(r'./test_list_shot.txt',
+    ViPC_test = ViPCDataLoader(r'./test_reduced.txt',
                                 data_path=cfg.DATASETS.SHAPENET.VIPC_PATH, status='test',
                                 view_align=False, category=cfg.TRAIN.CATE)
     #创建测试数据加载器
@@ -89,6 +89,18 @@ def train_net(cfg):
     steps = 0#初始化步数为0
     best_epoch = 0
 
+    # 恢复训练
+    checkpoint_dir = cfg.DIR.CHECKPOINTS
+    checkpoint_file = os.path.join(checkpoint_dir, 'ckpt-best.pth')
+    if os.path.exists(checkpoint_file):
+        checkpoint = torch.load(checkpoint_file)
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        #init_epoch = checkpoint['epoch'] + 1
+        logging.warning(f"Checkpoint loaded. Resuming training from epoch {init_epoch}")
+
+    
+    
 
     #开始训练
     for epoch in range(init_epoch+1, cfg.TRAIN.N_EPOCHS + 1):
@@ -131,7 +143,7 @@ def train_net(cfg):
                 cd_pc_item=loss_total.item()*1e3
                 total_cd_pc+=cd_pc_item
 
-                style_item = style_loss.item() * 1e1 *30 #风格损失
+                style_item = style_loss.item() * 1e1 *50 #风格损失
                 total_style += style_item
 
                 loss_item = loss_total.item() * 1e3
@@ -173,6 +185,7 @@ def train_net(cfg):
                 file_name = 'ckpt-epoch-%03d.pth' % epoch
             output_path = os.path.join(cfg.DIR.CHECKPOINTS, file_name)
             torch.save({
+                'epoch': epoch,
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict()
             }, output_path)

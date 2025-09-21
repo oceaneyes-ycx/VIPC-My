@@ -94,7 +94,7 @@ def train_net(cfg):
     if 'WEIGHTS' in cfg.CONST: #使用预训练权重
         logging.info('Recovering from %s ...' % (cfg.CONST.WEIGHTS))
         checkpoint = torch.load(cfg.CONST.WEIGHTS)
-        model.load_state_dict(checkpoint['model'])
+        
         optimizer.load_state_dict(checkpoint['optimizer'])
         steps = cfg.TRAIN.WARMUP_STEPS+1
         lr_scheduler = MultiStepLR(optimizer,milestones=cfg.TRAIN.LR_DECAY_STEP, gamma=cfg.TRAIN.GAMMA)
@@ -188,3 +188,4 @@ def train_net(cfg):
 
     train_writer.close()
     val_writer.close()
+model.load_state_dict(checkpoint['model'])

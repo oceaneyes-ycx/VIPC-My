@@ -50,7 +50,7 @@ def test_net(cfg, epoch_idx=-1, test_data_loader=None, test_writer=None, model=N
             model = torch.nn.DataParallel(model).cuda()
 
         logging.info('Recovering from %s ...' % (cfg.CONST.WEIGHTS))
-        checkpoint = torch.load(cfg.CONST.WEIGHTS)#加载权重
+        checkpoint = torch.load("../checkpoints/EGIInet/plane-ckpt-best.pth")#加载权重
         model.load_state_dict(checkpoint['model'])#加载模型的状态字典
 
     # Switch models to evaluation mode
