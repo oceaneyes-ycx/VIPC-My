@@ -96,8 +96,8 @@ def train_net(cfg):
         checkpoint = torch.load(checkpoint_file)
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
-        #init_epoch = checkpoint['epoch'] + 1
-        logging.warning(f"Checkpoint loaded. Resuming training from epoch {init_epoch}")
+        init_epoch = checkpoint['epoch'] + 1
+        logging.info(f"Checkpoint loaded. Resuming training from epoch {init_epoch}")
 
     
     
