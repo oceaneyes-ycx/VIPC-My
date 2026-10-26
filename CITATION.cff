@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "Please cite the accompanying VGTNet paper when using this code."
+title: "VGTNet: Cross Modal Point Cloud Completion with Geometric Transformation"
+type: software
+authors:
+  - family-names: Yu
+    given-names: Chuxiu
+  - family-names: Oishi
+    given-names: Takeshi
+license: MIT
+preferred-citation:
+  type: report
+  title: "Cross Modal Point Cloud Completion with Geometric Transformation"
+  authors:
+    - family-names: Yu
+      given-names: Chuxiu
+    - family-names: Oishi
+      given-names: Takeshi
+  year: 2025
+  notes: "IPSJ SIG Technical Report; manuscript included as CGVI2025_Yu.pdf."

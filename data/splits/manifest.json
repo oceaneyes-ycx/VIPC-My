@@ -1,0 +1,27 @@
+{
+  "train_list.txt": {
+    "sha256": "57d8765bc82b003ed2da078ff9ab4f250ef69c77431e24370d7c61b0513f8573",
+    "rows": 735858,
+    "uncompressed_bytes": 33755145
+  },
+  "test_list.txt": {
+    "sha256": "6b58b47216b8b26cc1dd1cc3aa5ebfbed9612d9e6e3f06211aebd0bd08d30150",
+    "rows": 183966,
+    "uncompressed_bytes": 8438895
+  },
+  "train_reduced.txt": {
+    "sha256": "2fbf0ebe859f150acc1f3bd4243dd6b42d1973bc30bbabfcd1c38c9fee8f5d8c",
+    "rows": 73585,
+    "uncompressed_bytes": 3375467
+  },
+  "test_reduced.txt": {
+    "sha256": "28a48a959bce3cd57f87560239dd8239fe0dff112fddacad9563b9e64ac1a570",
+    "rows": 18396,
+    "uncompressed_bytes": 843929
+  },
+  "test_onlyunseen.txt": {
+    "sha256": "489f3fdb0f72a94796d3aa2e6216124db3b8d624cda7f2a41faeb8aa43c58622",
+    "rows": 20608,
+    "uncompressed_bytes": 945174
+  }
+}

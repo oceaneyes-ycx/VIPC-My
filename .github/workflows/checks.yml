@@ -1,0 +1,17 @@
+name: Release checks
+on: [push, pull_request]
+jobs:
+  cpu-checks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m unittest discover -s tests -v
+      - run: python -m compileall -q main.py datasets models run utils extensions scripts tests
+      - run: python main.py --help
+# GPU/CUDA compilation and benchmark evaluation are run separately, not certified here.

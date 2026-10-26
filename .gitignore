@@ -1,0 +1,40 @@
+# Python and native extension builds
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.dll
+*.o
+*.obj
+*.egg
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments, editors and credentials
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Data, weights and generated results
+/data/ShapeNet*/
+/checkpoints/
+/outputs/
+/output/
+/project_logs/
+/wandb/
+*.pth
+*.pt
+*.ckpt
+events.out.tfevents.*
+.release-tmp/
