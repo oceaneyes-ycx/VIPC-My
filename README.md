@@ -8,7 +8,7 @@ VGTNet completes a partial point cloud using a single RGB image and learned geom
 
 ![VGTNet pipeline, reproduced from Figure 1 of the paper](assets/pipeline.png)
 
-This is a cleaned research implementation of the accompanying paper. The figure's historical label `CSTNet` corresponds to CGTNet in the paper text. [models/vgtnet.py](models/vgtnet.py) was extracted from the original `SymmCompletion3` with model parameter names preserved.
+The figure's historical label `CSTNet` corresponds to CGTNet in the paper text. [models/vgtnet.py](models/vgtnet.py) was extracted from the original `SymmCompletion3` with model parameter names preserved.
 
 ## Installation
 
